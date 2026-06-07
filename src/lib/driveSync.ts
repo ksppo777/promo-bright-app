@@ -1,86 +1,141 @@
 import { getAccessToken } from './auth';
+import { appLog } from './logger';
 
-const DROP_FILE_NAME = 'BrightStudy_Backup.json';
+const FILE_NAME = 'BrightStudyData.json';
 
-// Helper function to find the backup file if we created one before
-const findBackupFileId = async (accessToken: string): Promise<string | null> => {
+const getDriveFileId = async (token: string): Promise<string | null> => {
   try {
-    const q = encodeURIComponent(`name='${DROP_FILE_NAME}' and trashed=false`);
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+    const q = encodeURIComponent(`name='${FILE_NAME}'`);
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${q}&fields=files(id)`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) {
+      appLog('ERROR', 'getDriveFileId failed', await res.text());
+      return null;
+    }
+    const data = await res.json();
+    if (data.files && data.files.length > 0) return data.files[0].id;
+    return null;
+  } catch (err: any) {
+    appLog('ERROR', 'getDriveFileId error', err.message);
+    return null;
+  }
+};
+
+export const syncToDrive = async (appData: any, localTimestamp: number) => {
+  appLog('INFO', 'syncToDrive started', { localTimestamp });
+  const token = await getAccessToken();
+  if (!token) {
+    appLog('ERROR', 'syncToDrive: Not logged in');
+    throw new Error('Not logged in');
+  }
+
+  const fileId = await getDriveFileId(token);
+  
+  let targetFileId = fileId;
+
+  if (!targetFileId) {
+    // 1. Create file metadata
+    const metaRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ name: FILE_NAME, parents: ['appDataFolder'] })
+    });
+    if (!metaRes.ok) {
+      const errText = await metaRes.text();
+      appLog('ERROR', 'Drive create metadata failed', errText);
+      throw new Error('Drive create metadata failed');
+    }
+    const meta = await metaRes.json();
+    targetFileId = meta.id;
+  }
+
+  const payload = {
+    timestamp: localTimestamp,
+    data: appData
+  };
+  
+  try {
+    // 2. Upload file content
+    const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${targetFileId}?uploadType=media`, {
+      method: 'PATCH',
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      appLog('ERROR', 'Drive upload content failed', errText);
+      throw new Error('Drive upload content failed');
+    }
+    appLog('SUCCESS', 'syncToDrive completed');
+  } catch (err: any) {
+    appLog('ERROR', 'syncToDrive fetch error', err.message);
+    throw err;
+  }
+};
+
+export const syncFromDrive = async (): Promise<{ data: any, timestamp: number } | null> => {
+  appLog('INFO', 'syncFromDrive started');
+  const token = await getAccessToken();
+  if (!token) {
+    appLog('ERROR', 'syncFromDrive: Not logged in');
+    throw new Error('Not logged in');
+  }
+
+  const fileId = await getDriveFileId(token);
+  if (!fileId) {
+    appLog('INFO', 'syncFromDrive: No file found');
+    return null;
+  }
+
+  try {
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+      headers: { Authorization: `Bearer ${token}` }
     });
     
     if (!res.ok) {
-      console.error('Failed to list files', await res.text());
-      return null;
+      const errText = await res.text();
+      appLog('ERROR', 'Drive download failed', errText);
+      throw new Error('Drive download failed');
     }
-    
     const data = await res.json();
-    if (data.files && data.files.length > 0) {
-      return data.files[0].id;
-    }
-    return null;
-  } catch (err) {
-    console.error('Error finding backup file in Drive:', err);
-    return null;
+    appLog('SUCCESS', 'syncFromDrive completed', { remoteTimestamp: data.timestamp });
+    return data;
+  } catch (err: any) {
+    appLog('ERROR', 'syncFromDrive fetch error', err.message);
+    throw err;
   }
 };
 
-export const syncDataToDrive = async (appData: any): Promise<void> => {
+export const autoSyncDrive = async (localData: any, localTimestamp: number, onUpdateLocal: (data: any, newTimestamp: number) => void) => {
+  appLog('INFO', 'autoSyncDrive triggered', { localTimestamp });
   const token = await getAccessToken();
-  if (!token) throw new Error('Google Drive access token not available. Please login again.');
-
-  const fileContent = JSON.stringify(appData, null, 2);
-  const metadata = {
-    name: DROP_FILE_NAME,
-    mimeType: 'application/json',
-  };
-
-  const fileId = await findBackupFileId(token);
-
-  const form = new FormData();
-  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-  form.append('file', new Blob([fileContent], { type: 'application/json' }));
-
-  let url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
-  let method = 'POST';
-
-  if (fileId) {
-    url = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`;
-    method = 'PATCH';
+  if (!token || !navigator.onLine) {
+    appLog('INFO', 'autoSyncDrive aborted', { hasToken: !!token, isOnline: navigator.onLine });
+    return; // Silent skip
   }
-
-  const res = await fetch(url, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`
-    },
-    body: form,
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to upload to Google Drive: ${err}`);
+  
+  try {
+     const remote = await syncFromDrive();
+     if (remote && remote.timestamp > localTimestamp) {
+       appLog('INFO', 'autoSyncDrive: remote is newer, updating local data');
+       onUpdateLocal(remote.data, remote.timestamp);
+     } else if (!remote || localTimestamp > (remote?.timestamp || 0)) {
+       appLog('INFO', 'autoSyncDrive: local is newer or no remote, updating remote data');
+       await syncToDrive(localData, localTimestamp);
+     } else {
+       appLog('INFO', 'autoSyncDrive: sync is up to date');
+     }
+  } catch (e: any) {
+     appLog('ERROR', 'autoSyncDrive error', e.message);
+     console.error('Auto sync error', e);
   }
 };
 
-export const syncDataFromDrive = async (): Promise<any | null> => {
-  const token = await getAccessToken();
-  if (!token) throw new Error('Google Drive access token not available. Please login again.');
-
-  const fileId = await findBackupFileId(token);
-  if (!fileId) {
-    throw new Error('Google Drive에 저장된 백업 파일이 없습니다.');
-  }
-
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Failed to download from Google Drive: ${err}`);
-  }
-
-  return await res.json();
-};

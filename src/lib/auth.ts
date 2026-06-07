@@ -1,80 +1,131 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithPopup, signInWithCredential, GoogleAuthProvider, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { Capacitor } from '@capacitor/core';
-import firebaseConfig from '../../firebase-applet-config.json';
+import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+// AppData drive scope
+const DRIVE_APP_DATA_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 
-const provider = new GoogleAuthProvider();
-provider.addScope('https://www.googleapis.com/auth/drive.file');
+export interface User {
+  displayName: string | null;
+  email: string | null;
+  photoURL: string | null;
+}
 
-let isSigningIn = false;
 let cachedAccessToken: string | null = null;
+let googleTokenClient: any = null;
+let onAuthSuccessCallback: ((user: User, token: string) => void) | null = null;
+let cachedUser: User | null = null;
+
+// Replace with the user's Web Client ID later
+const WEB_CLIENT_ID = '926621621039-b6idpq9gvm3h1gn5ltb2p609pf401aaf.apps.googleusercontent.com';
 
 export const initAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
   onAuthFailure?: () => void
 ) => {
-  return onAuthStateChanged(auth, async (user: User | null) => {
-    if (user) {
-      if (cachedAccessToken) {
-        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
-      } else if (!isSigningIn) {
-        cachedAccessToken = null;
-        if (onAuthFailure) onAuthFailure();
+  if (onAuthSuccess) setOnAuthSuccessCallback(onAuthSuccess);
+
+  const performSilentLogin = async () => {
+    try {
+      if (Capacitor.isNativePlatform()) {
+        try {
+          GoogleAuth.initialize({
+            scopes: ['profile', 'email', DRIVE_APP_DATA_SCOPE],
+          });
+          const result = await GoogleAuth.refresh();
+          if (result && result.accessToken) {
+            cachedAccessToken = result.accessToken;
+            cachedUser = {
+              displayName: result.displayName || `${result.givenName || ''} ${result.familyName || ''}`.trim(),
+              email: result.email || null,
+              photoURL: result.imageUrl || null,
+            };
+            if (onAuthSuccessCallback) onAuthSuccessCallback(cachedUser, cachedAccessToken);
+            return;
+          }
+        } catch (e) {
+          console.log('Silent login failed for native', e);
+        }
+      } else {
+        // Web: We can check localStorage if we saved token/user, but access token expires in 1 hour.
+        // GIS doesn't have an automatic silent login for OAuth implicit flow that gives a fresh token without a prompt.
+        // Let's just fail silent login on web for now, or trigger the prompt if needed.
       }
-    } else {
-      cachedAccessToken = null;
-      if (onAuthFailure) onAuthFailure();
+    } catch (err) {
+      console.log('Init auth error:', err);
     }
+    if (onAuthFailure) onAuthFailure();
+  };
+
+  performSilentLogin();
+
+  // Return a dummy unsubscribe function
+  return () => {};
+};
+
+const fetchUserInfoFromWeb = async (token: string): Promise<User> => {
+  const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: `Bearer ${token}` }
   });
+  if (!res.ok) throw new Error('Failed to fetch user info');
+  const data = await res.json();
+  return {
+    displayName: data.name || null,
+    email: data.email || null,
+    photoURL: data.picture || null,
+  };
 };
 
 export const googleSignIn = async (): Promise<{ user: User, accessToken: string } | null> => {
-  try {
-    isSigningIn = true;
-
-    if (Capacitor.isNativePlatform()) {
-      const nativeResult = await FirebaseAuthentication.signInWithGoogle();
-
-      if (!nativeResult.credential?.idToken) {
-        throw new Error('Failed to get ID token from native Google Sign-In');
-      }
-
-      const credential = GoogleAuthProvider.credential(
-        nativeResult.credential.idToken,
-        nativeResult.credential.accessToken
-      );
-      const result = await signInWithCredential(auth, credential);
-      
-      cachedAccessToken = nativeResult.credential.accessToken || null;
-
-      if (onAuthSuccessCallback) onAuthSuccessCallback(result.user, cachedAccessToken!);
-      return { user: result.user, accessToken: cachedAccessToken! };
-    } 
-    else {
-      const result = await signInWithPopup(auth, provider);
-      
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (!credential?.accessToken) {
-        throw new Error('Failed to get access token from Firebase Auth');
-      }
-      cachedAccessToken = credential.accessToken;
-      
-      if (onAuthSuccessCallback) onAuthSuccessCallback(result.user, cachedAccessToken);
-      return { user: result.user, accessToken: cachedAccessToken };
+  if (Capacitor.isNativePlatform()) {
+    const result = await GoogleAuth.signIn();
+    if (result && result.accessToken) {
+      cachedAccessToken = result.accessToken;
+      cachedUser = {
+        displayName: result.displayName || `${result.givenName || ''} ${result.familyName || ''}`.trim(),
+        email: result.email || null,
+        photoURL: result.imageUrl || null,
+      };
+      if (onAuthSuccessCallback) onAuthSuccessCallback(cachedUser, cachedAccessToken);
+      return { user: cachedUser, accessToken: cachedAccessToken };
     }
-  } catch (error: any) {
-    if (error.code !== 'auth/cancelled-popup-request' && error.code !== 'auth/popup-closed-by-user') {
-      console.error('Sign in error:', error);
-    }
-    throw error;
-  } finally {
-    isSigningIn = false;
+    throw new Error('Google Sign-In failed on Native');
+  } else {
+    // Web GIS
+    return new Promise((resolve, reject) => {
+      // @ts-ignore
+      if (!window.google) {
+        reject(new Error('Google Identity Services script not loaded.'));
+        return;
+      }
+      
+      if (!googleTokenClient) {
+        // @ts-ignore
+        googleTokenClient = window.google.accounts.oauth2.initTokenClient({
+          client_id: WEB_CLIENT_ID,
+          scope: `profile email ${DRIVE_APP_DATA_SCOPE}`,
+          callback: async (tokenResponse: any) => {
+            if (tokenResponse && tokenResponse.access_token) {
+              try {
+                cachedAccessToken = tokenResponse.access_token;
+                const user = await fetchUserInfoFromWeb(cachedAccessToken!);
+                cachedUser = user;
+                if (onAuthSuccessCallback) onAuthSuccessCallback(cachedUser, cachedAccessToken!);
+                resolve({ user: cachedUser, accessToken: cachedAccessToken! });
+              } catch (e) {
+                reject(e);
+              }
+            } else {
+              reject(new Error('Token response missing access_token'));
+            }
+          },
+          error_callback: (err: any) => {
+            reject(err);
+          }
+        });
+      }
+      
+      googleTokenClient.requestAccessToken({ prompt: 'consent' });
+    });
   }
 };
 
@@ -82,15 +133,19 @@ export const getAccessToken = async (): Promise<string | null> => {
   return cachedAccessToken;
 };
 
-let onAuthSuccessCallback: ((user: User, token: string) => void) | null = null;
 export const setOnAuthSuccessCallback = (cb: (user: User, token: string) => void) => {
   onAuthSuccessCallback = cb;
+  if (cachedUser && cachedAccessToken) {
+    cb(cachedUser, cachedAccessToken);
+  }
 };
 
 export const logout = async () => {
   if (Capacitor.isNativePlatform()) {
-    await FirebaseAuthentication.signOut();
+    try {
+      await GoogleAuth.signOut();
+    } catch(e) {}
   }
-  await auth.signOut();
   cachedAccessToken = null;
+  cachedUser = null;
 };

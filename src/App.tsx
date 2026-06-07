@@ -29,7 +29,8 @@ import {
 import { cn } from "./lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { differenceInDays, parseISO } from "date-fns";
-import { getCloudSyncErrorMessage, syncDataToCloud } from "./lib/cloudSync";
+import { autoSyncDrive } from "./lib/driveSync";
+import { appLog } from "./lib/logger";
 
 const AUTO_CLOUD_BACKUP_DEBOUNCE_MS = 8000;
 
@@ -92,6 +93,8 @@ export default function App() {
   const [autoBackupStatus, setAutoBackupStatus] =
     useState<string>("자동 백업 대기 중");
 
+  const [localDataTimestamp, setLocalDataTimestamp, isLocalTimestampLoaded] = useLocalStorage<number>("study-helper-timestamp", Date.now());
+
   const isAllLoaded =
     isBooksLoaded &&
     isSessionsLoaded &&
@@ -105,7 +108,8 @@ export default function App() {
     isFontSizeLoaded &&
     isWordWrapLoaded &&
     isNavLabelsLoaded &&
-    isDDaySizeLoaded;
+    isDDaySizeLoaded &&
+    isLocalTimestampLoaded;
 
   const cloudSyncPayload = useMemo(
     () => ({
@@ -113,8 +117,17 @@ export default function App() {
       sessions,
       alarms,
       isDarkMode,
+      weeklyPlans,
+      monthlyPlans,
+      dailyGoalMinutes,
+      autoGoalDisplayMode,
+      dDay,
+      globalFontSize,
+      preventWordWrap,
+      showNavLabelsMobile,
+      dDaySize
     }),
-    [books, sessions, alarms, isDarkMode]
+    [books, sessions, alarms, isDarkMode, weeklyPlans, monthlyPlans, dailyGoalMinutes, autoGoalDisplayMode, dDay, globalFontSize, preventWordWrap, showNavLabelsMobile, dDaySize]
   );
 
   const autoBackupEnabledRef = useRef(false);
@@ -273,15 +286,18 @@ export default function App() {
     }
 
     setSessions((prev) => [...prev, baseSession]);
+    appLog('INFO', 'Study session added', baseSession);
   };
 
   const updateSession = (id: string, updates: Partial<StudySession>) => {
     setSessions((prev) =>
       prev.map((s) => (s.id === id ? { ...s, ...updates } : s))
     );
+    appLog('INFO', 'Study session updated', { id, updates });
   };
 
   const deleteSession = (id: string) => {
+    appLog('INFO', 'Study session deleted', { id });
     const session = sessions.find((s) => s.id === id);
     if (session && session.timetableBlockId && session.timetableDate) {
       import("./lib/timetableUtils").then(async (utils) => {
@@ -479,11 +495,22 @@ export default function App() {
 
   const getAllData = () => cloudSyncPayload;
 
-  const onDataSync = (data: any) => {
+  const onDataSync = (data: any, newTimestamp: number) => {
     if (data.books) setBooks(data.books);
     if (data.sessions) setSessions(data.sessions);
     if (data.alarms) setAlarms(data.alarms);
     if (data.isDarkMode !== undefined) setIsDarkMode(data.isDarkMode);
+    if (data.weeklyPlans) setWeeklyPlans(data.weeklyPlans);
+    if (data.monthlyPlans) setMonthlyPlans(data.monthlyPlans);
+    if (data.dailyGoalMinutes) setDailyGoalMinutes(data.dailyGoalMinutes);
+    if (data.autoGoalDisplayMode) setAutoGoalDisplayMode(data.autoGoalDisplayMode);
+    if (data.dDay !== undefined) setDDay(data.dDay);
+    if (data.globalFontSize) setGlobalFontSize(data.globalFontSize);
+    if (data.preventWordWrap !== undefined) setPreventWordWrap(data.preventWordWrap);
+    if (data.showNavLabelsMobile !== undefined) setShowNavLabelsMobile(data.showNavLabelsMobile);
+    if (data.dDaySize) setDDaySize(data.dDaySize);
+    
+    setLocalDataTimestamp(newTimestamp);
   };
 
   useEffect(() => {
@@ -506,14 +533,14 @@ export default function App() {
     autoBackupTimerRef.current = window.setTimeout(async () => {
       try {
         setAutoBackupStatus("자동 백업 실행 중...");
-        await syncDataToCloud(cloudSyncPayload, "auto");
+        const newTimestamp = Date.now();
+        setLocalDataTimestamp(newTimestamp);
+        await autoSyncDrive(cloudSyncPayload, newTimestamp, onDataSync);
         const backupTime = new Date().toISOString();
         setLastAutoBackupAt(backupTime);
         setAutoBackupStatus("자동 백업 완료");
-      } catch (error) {
-        setAutoBackupStatus(
-          `자동 백업 실패: ${getCloudSyncErrorMessage(error)}`
-        );
+      } catch (error: any) {
+        setAutoBackupStatus(`자동 백업 실패: ${error.message}`);
       }
     }, AUTO_CLOUD_BACKUP_DEBOUNCE_MS);
 
