@@ -4,6 +4,11 @@ import { cn } from '../lib/utils';
 import { StudySession } from '../types';
 import { isSameDay, parseISO } from 'date-fns';
 
+let capacitorNotifications: any = null;
+import("../lib/capacitor-notifications").then((m) => {
+  capacitorNotifications = m;
+}).catch(() => {});
+
 interface PomodoroTimerProps {
   onSessionComplete: (durationMinutes: number) => void;
   sessions: StudySession[];
@@ -45,6 +50,12 @@ export default function PomodoroTimer({ onSessionComplete, sessions, timerProps,
     if (!isActive && !timerBookId && mode === 'focus') {
       try { window.alert("목표 교재를 먼저 선택해주세요."); } catch(e) {}
       return;
+    }
+
+    if (!isActive) {
+      if (capacitorNotifications) {
+        capacitorNotifications.requestNotificationPermission();
+      }
     }
 
     if (!isActive && mode === 'focus' && timerBookId) {

@@ -32,6 +32,14 @@ import { differenceInDays, parseISO } from "date-fns";
 import { autoSyncDrive } from "./lib/driveSync";
 import { appLog } from "./lib/logger";
 
+let capacitorNotifications: any = null;
+import("./lib/capacitor-notifications").then((m) => {
+  capacitorNotifications = m;
+}).catch(() => {});
+
+import { Capacitor } from "@capacitor/core";
+import { App as CapApp } from "@capacitor/app";
+
 const AUTO_CLOUD_BACKUP_DEBOUNCE_MS = 8000;
 
 export default function App() {
@@ -226,6 +234,40 @@ export default function App() {
     blockId?: string;
   } | null>(null);
 
+  // Refs for background logic
+  const timerStateRef = useRef({
+    isActive,
+    timeLeft,
+    timerMode
+  });
+
+  useEffect(() => {
+    timerStateRef.current = { isActive, timeLeft, timerMode };
+  }, [isActive, timeLeft, timerMode]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    
+    const listener = CapApp.addListener('appStateChange', ({ isActive: appActive }) => {
+      const { isActive, timeLeft, timerMode } = timerStateRef.current;
+      if (!appActive) {
+        // App went to background
+        if (isActive && timeLeft > 0 && capacitorNotifications) {
+          capacitorNotifications.scheduleTimerNotification(timeLeft, timerMode);
+        }
+      } else {
+        // App came to foreground
+        if (capacitorNotifications) {
+          capacitorNotifications.cancelTimerNotification();
+        }
+      }
+    });
+
+    return () => {
+      listener.then(l => l.remove());
+    };
+  }, []);
+
   const initialTimeLeft =
     timerMode === "focus"
       ? timerType === "beginner"
@@ -313,10 +355,18 @@ export default function App() {
 
   useEffect(() => {
     let interval: any;
+    let lastTick = Date.now();
+    
     if (isActive && timeLeft > 0) {
       interval = setInterval(() => {
-        setTimeLeft((prev) => prev - 1);
-      }, 1000);
+        const now = Date.now();
+        const deltaSeconds = Math.round((now - lastTick) / 1000);
+        
+        if (deltaSeconds >= 1) {
+          setTimeLeft((prev) => Math.max(0, prev - deltaSeconds));
+          lastTick = now;
+        }
+      }, 500);
     } else if (isActive && timeLeft <= 0) {
       if (timerMode === "focus") {
         const audio = new Audio(
@@ -355,6 +405,9 @@ export default function App() {
 
   const stopTimer = () => {
     setIsActive(false);
+    if (capacitorNotifications) {
+      capacitorNotifications.cancelTimerNotification();
+    }
     if (timerMode === "focus") {
       const elapsedSeconds = initialTimeLeft - timeLeft;
       if (elapsedSeconds > 0) {
@@ -446,6 +499,12 @@ export default function App() {
 
   // Handle Alarm logic
   useEffect(() => {
+    // 1. Sync alarms natively if on mobile
+    if (Capacitor.isNativePlatform() && capacitorNotifications) {
+      capacitorNotifications.syncLocalAlarms(alarms, books);
+    }
+
+    // 2. Web fallback
     const interval = setInterval(() => {
       const now = new Date();
       if (now.getSeconds() !== 0) return; // Trigger exactly on the minute
