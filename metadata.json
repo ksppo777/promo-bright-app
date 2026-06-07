@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Bright Study Helper",
+  "description": "학습 도우미 프로그램: 목차 기반 진도 추적, 뽀모도로 타이머, 통계 기능 지원",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
