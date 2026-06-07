@@ -1,4 +1,4 @@
-import { getAccessToken } from './auth';
+import { getAccessToken, logout } from './auth';
 import { appLog } from './logger';
 
 const FILE_NAME = 'BrightStudyData.json';
@@ -11,6 +11,9 @@ const getDriveFileId = async (token: string): Promise<string | null> => {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (!res.ok) {
+      if (res.status === 401) {
+        await logout();
+      }
       const errText = await res.text();
       console.error('getDriveFileId: 네크워크 요청 실패', res.status, errText);
       appLog('ERROR', 'getDriveFileId failed', errText);
@@ -59,6 +62,9 @@ export const syncToDrive = async (appData: any, localTimestamp: number) => {
       });
       
       if (!metaRes.ok) {
+        if (metaRes.status === 401) {
+          await logout();
+        }
         const errText = await metaRes.text();
         console.error('syncToDrive: 파일 메타데이터 생성 실패', errText);
         appLog('ERROR', 'Drive create metadata failed', errText);
@@ -89,6 +95,9 @@ export const syncToDrive = async (appData: any, localTimestamp: number) => {
     });
 
     if (!res.ok) {
+      if (res.status === 401) {
+        await logout();
+      }
       const errText = await res.text();
       console.error('syncToDrive: 기기 데이터 업로드 실패', errText);
       appLog('ERROR', 'Drive upload content failed', errText);
@@ -130,6 +139,9 @@ export const syncFromDrive = async (): Promise<{ data: any, timestamp: number } 
     });
     
     if (!res.ok) {
+      if (res.status === 401) {
+        await logout();
+      }
       const errText = await res.text();
       console.error('syncFromDrive: 다운로드 실패', errText);
       appLog('ERROR', 'Drive download failed', errText);

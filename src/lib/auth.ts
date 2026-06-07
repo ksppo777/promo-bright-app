@@ -15,6 +15,31 @@ let googleTokenClient: any = null;
 let onAuthSuccessCallback: ((user: User, token: string) => void) | null = null;
 let cachedUser: User | null = null;
 
+const STORAGE_KEY_TOKEN = 'app_google_token';
+const STORAGE_KEY_USER = 'app_google_user';
+const STORAGE_KEY_EXPIRY = 'app_google_token_expiry';
+
+try {
+  const token = localStorage.getItem(STORAGE_KEY_TOKEN);
+  const userStr = localStorage.getItem(STORAGE_KEY_USER);
+  const expiryStr = localStorage.getItem(STORAGE_KEY_EXPIRY);
+  if (token && userStr && expiryStr) {
+    const expiry = parseInt(expiryStr, 10);
+    // 세션 만료 검증 (현재 시간이 만료 시간보다 이전인지)
+    if (Date.now() < expiry) {
+      cachedAccessToken = token;
+      cachedUser = JSON.parse(userStr);
+    } else {
+      // 세션 만료 시 로컬 저장소 초기화하여 재로그인 요구
+      localStorage.removeItem(STORAGE_KEY_TOKEN);
+      localStorage.removeItem(STORAGE_KEY_USER);
+      localStorage.removeItem(STORAGE_KEY_EXPIRY);
+    }
+  }
+} catch (e) {
+  console.log('Failed to restore auth from local storage', e);
+}
+
 // Replace with the user's Web Client ID later
 const WEB_CLIENT_ID = '926621621039-b6idpq9gvm3h1gn5ltb2p609pf401aaf.apps.googleusercontent.com';
 
@@ -23,8 +48,13 @@ export const initAuth = (
   onAuthFailure?: () => void
 ) => {
   if (onAuthSuccess) setOnAuthSuccessCallback(onAuthSuccess);
+  if (onAuthFailure) setOnAuthFailureCallback(onAuthFailure);
 
   const performSilentLogin = async () => {
+    if (cachedAccessToken && cachedUser) {
+      // We already have a valid token from local storage
+      return;
+    }
     try {
       if (Capacitor.isNativePlatform()) {
         try {
@@ -32,10 +62,6 @@ export const initAuth = (
             clientId: WEB_CLIENT_ID,
             scopes: ['profile', 'email', DRIVE_APP_DATA_SCOPE],
           });
-          // capawesome requires explicit signIn for initial token on Android credential manager,
-          // but if we had a saved one we wouldn't show a prompt if we pass proper options, 
-          // or we just skip silent login if no refresh is easily available. 
-          // Or we can just do nothing for silent login on capawesome native and let user click 'login'.
         } catch (e) {
           console.log('Silent login failed for native', e);
         }
@@ -77,6 +103,13 @@ export const googleSignIn = async (): Promise<{ user: User, accessToken: string 
         photoURL: result.imageUrl || null,
       };
       if (onAuthSuccessCallback) onAuthSuccessCallback(cachedUser, cachedAccessToken);
+      
+      try {
+        localStorage.setItem(STORAGE_KEY_TOKEN, cachedAccessToken);
+        localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(cachedUser));
+        localStorage.setItem(STORAGE_KEY_EXPIRY, (Date.now() + 3500 * 1000).toString());
+      } catch (e) {}
+
       return { user: cachedUser, accessToken: cachedAccessToken };
     }
     throw new Error('Google Sign-In failed on Native');
@@ -101,6 +134,13 @@ export const googleSignIn = async (): Promise<{ user: User, accessToken: string 
                 const user = await fetchUserInfoFromWeb(cachedAccessToken!);
                 cachedUser = user;
                 if (onAuthSuccessCallback) onAuthSuccessCallback(cachedUser, cachedAccessToken!);
+                
+                try {
+                  localStorage.setItem(STORAGE_KEY_TOKEN, cachedAccessToken!);
+                  localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(cachedUser));
+                  localStorage.setItem(STORAGE_KEY_EXPIRY, (Date.now() + 3500 * 1000).toString());
+                } catch (e) {}
+
                 resolve({ user: cachedUser, accessToken: cachedAccessToken! });
               } catch (e) {
                 reject(e);
@@ -115,7 +155,7 @@ export const googleSignIn = async (): Promise<{ user: User, accessToken: string 
         });
       }
       
-      googleTokenClient.requestAccessToken({ prompt: 'consent' });
+      googleTokenClient.requestAccessToken();
     });
   }
 };
@@ -131,6 +171,12 @@ export const setOnAuthSuccessCallback = (cb: (user: User, token: string) => void
   }
 };
 
+let onAuthFailureCallback: (() => void) | null = null;
+
+export const setOnAuthFailureCallback = (cb: () => void) => {
+  onAuthFailureCallback = cb;
+};
+
 export const logout = async () => {
   if (Capacitor.isNativePlatform()) {
     try {
@@ -139,4 +185,13 @@ export const logout = async () => {
   }
   cachedAccessToken = null;
   cachedUser = null;
+  try {
+    localStorage.removeItem(STORAGE_KEY_TOKEN);
+    localStorage.removeItem(STORAGE_KEY_USER);
+    localStorage.removeItem(STORAGE_KEY_EXPIRY);
+  } catch (e) {}
+  
+  if (onAuthFailureCallback) {
+    onAuthFailureCallback();
+  }
 };
