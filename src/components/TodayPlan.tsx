@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
-import { Target, Book as BookIcon, Clock, Plus, Trash2, X, CalendarDays, RotateCcw, Divide } from 'lucide-react';
+import { Target, Book as BookIcon, Clock, Plus, Trash2, X, CalendarDays, RotateCcw, Divide, MoreVertical, Edit2 } from 'lucide-react';
 import { Book, Chapter } from '../types';
 import { useLocalStorage, cn } from '../lib/utils';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface TodayPlanProps {
   dailyGoalMinutes: number;
@@ -80,6 +81,7 @@ export default function TodayPlan({ dailyGoalMinutes, setDailyGoalMinutes, setWe
   const [startPage, setStartPage] = useState('');
   const [endPage, setEndPage] = useState('');
   const [memo, setMemo] = useState('');
+  const [activeGoalMenuId, setActiveGoalMenuId] = useState<string | null>(null);
 
   // Sync to weeklyPlans for Calendar
   useEffect(() => {
@@ -539,12 +541,52 @@ export default function TodayPlan({ dailyGoalMinutes, setDailyGoalMinutes, setWe
                                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{goal.memo}</span>
                                </div>
                              )}
-                             <button onClick={(e) => { e.stopPropagation(); handleDeleteGoal(block.id); }} className="absolute right-0 top-1/2 -translate-y-1/2 p-2 text-slate-300 hover:text-red-500 dark:text-slate-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all">
-                                <Trash2 className="w-4 h-4" />
-                             </button>
+                             <div className="absolute right-0 top-1/2 -translate-y-1/2 z-10">
+                               <button 
+                                 onClick={(e) => { 
+                                   e.stopPropagation(); 
+                                   setActiveGoalMenuId(activeGoalMenuId === block.id ? null : block.id); 
+                                 }} 
+                                 className="p-2 text-slate-400 hover:text-blue-500 dark:text-slate-500 dark:hover:text-blue-400 transition-all rounded-md"
+                               >
+                                  <MoreVertical className="w-5 h-5" />
+                               </button>
+                               <AnimatePresence>
+                                 {activeGoalMenuId === block.id && (
+                                   <motion.div
+                                     initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                                     animate={{ opacity: 1, scale: 1, y: 0 }}
+                                     exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                                     transition={{ duration: 0.15 }}
+                                     className="absolute right-0 top-10 mt-1 w-28 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-100 dark:border-slate-700 py-1 z-20"
+                                   >
+                                     <button
+                                       onClick={(e) => {
+                                         e.stopPropagation();
+                                         setActiveGoalMenuId(null);
+                                         openEditModal(block.id, `${block.startTime} ~ ${block.endTime}`);
+                                       }}
+                                       className="w-full text-left px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center gap-2"
+                                     >
+                                       <Edit2 className="w-4 h-4" /> 수정
+                                     </button>
+                                     <button
+                                       onClick={(e) => {
+                                         e.stopPropagation();
+                                         handleDeleteGoal(block.id);
+                                         setActiveGoalMenuId(null);
+                                       }}
+                                       className="w-full text-left px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
+                                     >
+                                       <Trash2 className="w-4 h-4" /> 삭제
+                                     </button>
+                                   </motion.div>
+                                 )}
+                               </AnimatePresence>
+                             </div>
                            </div>
                          ) : (
-                           <div className="h-full w-full flex items-center text-slate-300 dark:text-slate-600 font-bold text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                           <div className="h-full w-full flex items-center text-slate-400 dark:text-slate-500 font-bold text-xs transition-colors group-hover:text-slate-600 dark:group-hover:text-slate-400">
                              <Plus className="w-4 h-4 mr-1" /> 계획 추가
                            </div>
                          )}

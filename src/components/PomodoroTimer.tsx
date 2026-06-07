@@ -329,7 +329,7 @@ export default function PomodoroTimer({ onSessionComplete, sessions, timerProps,
               {m === 'sound' && "소리만"}
               {m === 'vibrate' && "진동만"}
               {m === 'both' && "소리+진동"}
-              {m === 'off' && "알림 끔"}
+              {m === 'off' && "화면 알림만"}
             </button>
           ))}
         </div>

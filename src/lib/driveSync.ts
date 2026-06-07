@@ -1,5 +1,7 @@
 import { getAccessToken, logout } from './auth';
 import { appLog } from './logger';
+import { Capacitor } from '@capacitor/core';
+import { Network } from '@capacitor/network';
 
 const FILE_NAME = 'BrightStudyData.json';
 
@@ -113,6 +115,25 @@ export const syncToDrive = async (appData: any, localTimestamp: number) => {
   }
 };
 
+export const getDriveSyncMetadata = async (): Promise<number | null> => {
+  try {
+    const token = await getAccessToken();
+    if (!token) return null;
+    const fileId = await getDriveFileId(token);
+    if (!fileId) return null;
+    
+    // We can just query `fields=modifiedTime` instead of downloading the whole file!
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=modifiedTime`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return new Date(data.modifiedTime).getTime();
+  } catch (e) {
+    return null;
+  }
+};
+
 export const syncFromDrive = async (): Promise<{ data: any, timestamp: number } | null> => {
   console.log('syncFromDrive: 복원 시작');
   appLog('INFO', 'syncFromDrive started');
@@ -159,14 +180,28 @@ export const syncFromDrive = async (): Promise<{ data: any, timestamp: number } 
   }
 };
 
-export const autoSyncDrive = async (localData: any, localTimestamp: number, onUpdateLocal: (data: any, newTimestamp: number) => void) => {
+export const autoSyncDrive = async (
+  localData: any, 
+  localTimestamp: number, 
+  onUpdateLocal: (data: any, newTimestamp: number) => void,
+  networkPreference: "all" | "wifi_only" = "all"
+): Promise<string> => {
   console.log('autoSyncDrive: 자동 동기화 시도 시작', { localTimestamp });
   appLog('INFO', 'autoSyncDrive triggered', { localTimestamp });
+  
+  if (Capacitor.isNativePlatform()) {
+    const status = await Network.getStatus();
+    if (networkPreference === "wifi_only" && status.connectionType !== "wifi") {
+      console.log('autoSyncDrive: 와이파이 환경이 아니므로 동기화 생략');
+      return "skipped_wifi";
+    }
+  }
+
   const token = await getAccessToken();
   if (!token || !navigator.onLine) {
     console.log('autoSyncDrive: 중단됨 (오프라인이거나 토큰이 없음)', { hasToken: !!token, isOnline: navigator.onLine });
     appLog('INFO', 'autoSyncDrive aborted', { hasToken: !!token, isOnline: navigator.onLine });
-    return; // Silent skip
+    return "skipped_offline";
   }
   
   try {
@@ -176,17 +211,21 @@ export const autoSyncDrive = async (localData: any, localTimestamp: number, onUp
        console.log('autoSyncDrive: 클라우드 데이터가 더 최신입니다. 로컬 데이터 업데이트 중...', { remoteTimestamp: remote.timestamp, localTimestamp });
        appLog('INFO', 'autoSyncDrive: remote is newer, updating local data');
        onUpdateLocal(remote.data, remote.timestamp);
+       return "updated_from_remote";
      } else if (!remote || localTimestamp > (remote?.timestamp || 0)) {
        console.log('autoSyncDrive: 로컬 데이터가 최신이거나 클라우드에 데이터가 없습니다. 클라우드에 데이터 백업 중...', { remoteTimestamp: remote?.timestamp, localTimestamp });
        appLog('INFO', 'autoSyncDrive: local is newer or no remote, updating remote data');
        await syncToDrive(localData, localTimestamp);
+       return "uploaded_to_remote";
      } else {
        console.log('autoSyncDrive: 동기화 완료 상태 (로컬과 클라우드 데이터 타임스탬프 동일).');
        appLog('INFO', 'autoSyncDrive: sync is up to date');
+       return "up_to_date";
      }
   } catch (e: any) {
      console.error('autoSyncDrive: 처리 중 에러 발생', e);
      appLog('ERROR', 'autoSyncDrive error', e.message);
+     throw e;
   }
 };
 

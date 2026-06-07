@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { initAuth, googleSignIn, logout, User } from "../lib/auth";
-import { syncToDrive, syncFromDrive } from "../lib/driveSync";
+import { syncToDrive, syncFromDrive, getDriveSyncMetadata } from "../lib/driveSync";
 import { getIsLogMode, setIsLogModeConfig, clearLogs, exportLogsStr } from "../lib/logger";
 import {
   Cloud,
@@ -34,6 +34,9 @@ interface SettingsProps {
   setShowNavLabelsMobile: (val: boolean) => void;
   autoBackupStatus: string;
   lastAutoBackupAt: string | null;
+  localDataTimestamp: number;
+  syncNetworkPreference: "all" | "wifi_only";
+  setSyncNetworkPreference: (val: "all" | "wifi_only") => void;
 }
 
 export default function Settings({
@@ -51,15 +54,33 @@ export default function Settings({
   setShowNavLabelsMobile,
   autoBackupStatus,
   lastAutoBackupAt,
+  localDataTimestamp,
+  syncNetworkPreference,
+  setSyncNetworkPreference,
 }: SettingsProps) {
   const [user, setUser] = useState<User | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [isLogMode, setIsLogMode] = useState(getIsLogMode());
+  const [remoteDataTimestamp, setRemoteDataTimestamp] = useState<number | null>(null);
+  const [isFetchingRemoteDate, setIsFetchingRemoteDate] = useState(false);
 
   const showTemporaryStatus = (message: string, duration = 4000) => {
     setSyncStatus(message);
     window.setTimeout(() => setSyncStatus(null), duration);
+  };
+
+  const refreshRemoteTimestamp = async () => {
+    if (!user) return;
+    try {
+      setIsFetchingRemoteDate(true);
+      const ts = await getDriveSyncMetadata();
+      setRemoteDataTimestamp(ts);
+    } catch {
+      // Ignore
+    } finally {
+      setIsFetchingRemoteDate(false);
+    }
   };
 
   useEffect(() => {
@@ -69,6 +90,10 @@ export default function Settings({
     );
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    refreshRemoteTimestamp();
+  }, [user]);
 
   const handleLogin = async () => {
     try {
@@ -302,12 +327,43 @@ export default function Settings({
                    </button>
                  </div>
                  
-                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs p-3 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-700">
-                   <div className="flex flex-col gap-0.5">
-                     <span className="font-bold text-slate-700 dark:text-slate-300">자동 연동 활성화 상태</span>
-                     <span className="text-[11px] text-slate-500 dark:text-slate-400">인터넷 연결 시 백그라운드 자동 연동</span>
+                 <div className="flex flex-col gap-3 p-3 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-700">
+                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                     <div className="flex flex-col gap-0.5">
+                       <span className="font-bold text-slate-700 dark:text-slate-300">자동 연동 활성화 상태</span>
+                       <span className="text-[11px] text-slate-500 dark:text-slate-400">인터넷 연결 시 백그라운드 자동 연동</span>
+                     </div>
+                     <span className="font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100/50 dark:bg-emerald-900/30 px-3 py-1.5 rounded-lg text-center">{autoBackupStatus}</span>
                    </div>
-                   <span className="font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100/50 dark:bg-emerald-900/30 px-3 py-1.5 rounded-lg text-center">{autoBackupStatus}</span>
+
+                   <div className="w-full h-px bg-slate-200 dark:bg-slate-700/50" />
+
+                   <div className="flex flex-col gap-2">
+                     <div className="flex items-center justify-between text-[11px]">
+                       <span className="text-slate-500 font-medium whitespace-nowrap">현재 기기 데이터 (수정 기준)</span>
+                       <span className="font-bold text-slate-700 dark:text-slate-300 truncate pl-2">{new Date(localDataTimestamp).toLocaleString()}</span>
+                     </div>
+                     <div className="flex items-center justify-between text-[11px]">
+                       <span className="text-slate-500 font-medium whitespace-nowrap">구글 클라우드 백업 (최신 버전)</span>
+                       <span className="font-bold text-blue-600 dark:text-blue-400 truncate pl-2">
+                         {isFetchingRemoteDate ? "확인 중..." : remoteDataTimestamp ? new Date(remoteDataTimestamp).toLocaleString() : "없음"}
+                       </span>
+                     </div>
+                   </div>
+
+                   <div className="w-full h-px bg-slate-200 dark:bg-slate-700/50" />
+
+                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                     <span className="font-bold text-slate-700 dark:text-slate-300">백업/동기화 가능한 네트워크 연결 수단</span>
+                     <select 
+                       value={syncNetworkPreference} 
+                       onChange={(e) => setSyncNetworkPreference(e.target.value as "all" | "wifi_only")}
+                       className="px-2 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg outline-none cursor-pointer"
+                     >
+                       <option value="all">Wi-Fi 및 모바일 데이터 모두</option>
+                       <option value="wifi_only">Wi-Fi 에서만 (모바일 데이터 절약)</option>
+                     </select>
+                   </div>
                  </div>
                  {syncStatus && <p className="text-center font-bold text-sm text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 py-2 rounded-xl">{syncStatus}</p>}
                </div>

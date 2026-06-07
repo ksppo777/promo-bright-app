@@ -102,6 +102,7 @@ export default function App() {
     useState<string>("자동 백업 대기 중");
 
   const [localDataTimestamp, setLocalDataTimestamp, isLocalTimestampLoaded] = useLocalStorage<number>("study-helper-timestamp", Date.now());
+  const [syncNetworkPreference, setSyncNetworkPreference, isSyncNetworkLoaded] = useLocalStorage<"all" | "wifi_only">("study-helper-network-pref", "all");
 
   const isAllLoaded =
     isBooksLoaded &&
@@ -117,7 +118,8 @@ export default function App() {
     isWordWrapLoaded &&
     isNavLabelsLoaded &&
     isDDaySizeLoaded &&
-    isLocalTimestampLoaded;
+    isLocalTimestampLoaded &&
+    isSyncNetworkLoaded;
 
   const cloudSyncPayload = useMemo(
     () => ({
@@ -581,10 +583,16 @@ export default function App() {
         setAutoBackupStatus("자동 백업 실행 중...");
         const newTimestamp = Date.now();
         setLocalDataTimestamp(newTimestamp);
-        await autoSyncDrive(cloudSyncPayload, newTimestamp, onDataSync);
-        const backupTime = new Date().toISOString();
-        setLastAutoBackupAt(backupTime);
-        setAutoBackupStatus("자동 백업 완료");
+        const status = await autoSyncDrive(cloudSyncPayload, newTimestamp, onDataSync, syncNetworkPreference);
+        if (status === "skipped_wifi") {
+           setAutoBackupStatus("생략됨 (Wi-Fi 밖)");
+        } else if (status === "skipped_offline") {
+           setAutoBackupStatus("연결 대기 중");
+        } else {
+           const backupTime = new Date().toISOString();
+           setLastAutoBackupAt(backupTime);
+           setAutoBackupStatus("자동 백업 완료");
+        }
       } catch (error: any) {
         setAutoBackupStatus(`자동 백업 실패: ${error.message}`);
       }
@@ -1052,6 +1060,9 @@ export default function App() {
                 setShowNavLabelsMobile={setShowNavLabelsMobile}
                 autoBackupStatus={autoBackupStatus}
                 lastAutoBackupAt={lastAutoBackupAt}
+                localDataTimestamp={localDataTimestamp}
+                syncNetworkPreference={syncNetworkPreference}
+                setSyncNetworkPreference={setSyncNetworkPreference}
               />
             )}
           </motion.div>
