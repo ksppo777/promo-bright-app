@@ -29,8 +29,10 @@ export default function PomodoroTimer({ onSessionComplete, sessions, timerProps,
     expertBreakTime, setExpertBreakTime,
     timerBookId, setTimerBookId,
     timerChapterId, setTimerChapterId,
+    timerAlertMode, setTimerAlertMode,
     initialTimeLeft,
     stopTimer,
+    syncIntention, setSyncIntention, executeImmediateSync,
     realTimeAddedSeconds
   } = timerProps;
 
@@ -311,6 +313,25 @@ export default function PomodoroTimer({ onSessionComplete, sessions, timerProps,
               ))}
             </select>
           )}
+        </div>
+
+        {/* Alert Mode Selection */}
+        <div className="flex gap-2 w-full max-w-sm mb-6 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+          {(['sound', 'vibrate', 'both', 'off'] as const).map(m => (
+            <button
+              key={m}
+              onClick={() => setTimerAlertMode(m)}
+              className={cn(
+               "flex-1 py-1.5 text-xs font-bold rounded-xl transition-all capitalize",
+               timerAlertMode === m ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+              )}
+            >
+              {m === 'sound' && "소리만"}
+              {m === 'vibrate' && "진동만"}
+              {m === 'both' && "소리+진동"}
+              {m === 'off' && "알림 끔"}
+            </button>
+          ))}
         </div>
 
         <div className="flex gap-2 p-1.5 mb-8 bg-blue-50/80 dark:bg-slate-900/80 rounded-full border border-blue-100 dark:border-slate-700">

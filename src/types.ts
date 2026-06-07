@@ -69,4 +69,5 @@ export interface StudyAlarm {
   expertMode?: boolean;
   bookId?: string;
   chapterId?: string;
+  alertMode?: 'sound' | 'vibrate' | 'both' | 'off';
 }

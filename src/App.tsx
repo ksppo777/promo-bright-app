@@ -226,6 +226,22 @@ export default function App() {
   });
   const [timerBookId, setTimerBookId] = useState<string>("");
   const [timerChapterId, setTimerChapterId] = useState<string>("");
+  const [timerAlertMode, setTimerAlertMode] = useState<"sound" | "vibrate" | "both" | "off">("sound");
+  const [timerEndNotification, setTimerEndNotification] = useState<"focus_ended" | "break_ended" | null>(null);
+  const [activeAlarmNotification, setActiveAlarmNotification] = useState<StudyAlarm | null>(null);
+
+  const playSystemAlert = (mode: "sound" | "vibrate" | "both" | "off") => {
+    if (mode === "sound" || mode === "both") {
+      const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3");
+      audio.play().catch(() => {});
+    }
+    if (mode === "vibrate" || mode === "both") {
+      if (navigator.vibrate) {
+        navigator.vibrate([500, 200, 500, 200, 500]);
+      }
+    }
+  };
+
   const [syncIntention, setSyncIntention] = useState<{
     targetDateStr: string;
     startTimeStr: string;
@@ -368,27 +384,14 @@ export default function App() {
         }
       }, 500);
     } else if (isActive && timeLeft <= 0) {
+      setIsActive(false);
+      playSystemAlert(timerAlertMode);
+      
       if (timerMode === "focus") {
-        const audio = new Audio(
-          "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
-        );
-        audio.play().catch(() => {});
         addStudySession(initialTimeLeft, timerBookId, timerChapterId);
-        setTimerMode("break");
-        setTimeLeft(5 * 60);
+        setTimerEndNotification("focus_ended");
       } else {
-        const audio = new Audio(
-          "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
-        );
-        audio.play().catch(() => {});
-        setTimerMode("focus");
-        setTimeLeft(
-          timerType === "beginner"
-            ? 25 * 60
-            : expertTime.hours * 3600 +
-                expertTime.minutes * 60 +
-                expertTime.seconds
-        );
+        setTimerEndNotification("break_ended");
       }
     }
     return () => clearInterval(interval);
@@ -469,6 +472,8 @@ export default function App() {
     setTimerBookId,
     timerChapterId,
     setTimerChapterId,
+    timerAlertMode,
+    setTimerAlertMode,
     syncIntention,
     setSyncIntention,
     executeImmediateSync,
@@ -523,29 +528,11 @@ export default function App() {
 
       if (triggerAlarm) {
         window.sessionStorage.setItem(uniqueTriggerKey, "true");
-        // Play notification sound
-        const audio = new Audio(
-          "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
-        );
-        audio.play().catch(() => {});
+        // Play notification alert
+        const mode = triggerAlarm.alertMode || 'sound';
+        playSystemAlert(mode);
 
-        let message =
-          "⏰ 규칙적인 학습 시간이 되었습니다! 학습을 시작해볼까요?";
-        if (triggerAlarm.expertMode && triggerAlarm.bookId) {
-          const book = books.find((b) => b.id === triggerAlarm.bookId);
-          const chapter = book?.chapters.find(
-            (c) => c.id === triggerAlarm.chapterId
-          );
-          if (book) {
-            if (chapter) {
-              message = `⏰ ${book.title} ${chapter.title} 공부할 시간이 되었습니다!`;
-            } else {
-              message = `⏰ ${book.title} 공부할 시간이 되었습니다!`;
-            }
-          }
-        }
-        // Don't auto-delete alarms, just alert.
-        try { window.alert(message); } catch(e) { console.log("알람:", message); }
+        setActiveAlarmNotification(triggerAlarm);
       }
     }, 1000); // Check every 1 second
 
@@ -749,6 +736,73 @@ export default function App() {
           </nav>
         </div>
       </header>
+
+      {/* Timer End Modal */}
+      {timerEndNotification && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center animate-in zoom-in-95 duration-200">
+            <div className="w-20 h-20 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center text-4xl mb-6 shadow-inner">
+              {timerEndNotification === "focus_ended" ? "🎉" : "💪"}
+            </div>
+            <h3 className="text-2xl font-black text-slate-800 dark:text-white mb-3">
+              {timerEndNotification === "focus_ended" ? "학습 시간 종료!" : "휴식 시간 종료!"}
+            </h3>
+            <p className="text-slate-600 dark:text-slate-300 mb-8 font-medium">
+              {timerEndNotification === "focus_ended" 
+                ? "고생하셨습니다! 충분한 휴식을 취하세요." 
+                : "휴식을 마쳤습니다! 다시 집중해볼까요?"}
+            </p>
+            <button
+              onClick={() => {
+                const nextMode = timerEndNotification === "focus_ended" ? "break" : "focus";
+                setTimerMode(nextMode);
+                setTimeLeft(
+                  nextMode === "break"
+                    ? 5 * 60
+                    : (timerType === "beginner" ? 25 * 60 : expertTime.hours * 3600 + expertTime.minutes * 60 + expertTime.seconds)
+                );
+                setTimerEndNotification(null);
+                setIsActive(true); // Automatically start next phase upon clicking OK
+              }}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl transition-colors shadow-lg shadow-indigo-200 dark:shadow-none text-lg"
+            >
+              확인 (다음 단계 시작)
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Alarm Trigger Modal */}
+      {activeAlarmNotification && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center animate-in zoom-in-95 duration-200">
+            <div className="w-20 h-20 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center text-4xl mb-6 shadow-inner animate-bounce">
+              ⏰
+            </div>
+            <h3 className="text-2xl font-black text-slate-800 dark:text-white mb-3">
+              학습 시간입니다!
+            </h3>
+            <p className="text-slate-600 dark:text-slate-300 mb-8 font-medium">
+              {(() => {
+                 if (activeAlarmNotification.expertMode && activeAlarmNotification.bookId) {
+                   const book = activeBooks.find(b => b.id === activeAlarmNotification.bookId);
+                   const chapter = book?.chapters.find(c => c.id === activeAlarmNotification.chapterId);
+                   if (book) {
+                     return chapter ? `${book.title} ${chapter.title} 공부할 시간이에요!` : `${book.title} 공부할 시간이에요!`;
+                   }
+                 }
+                 return "규칙적인 학습 시간이 되었습니다! 학습을 시작해볼까요?";
+              })()}
+            </p>
+            <button
+              onClick={() => setActiveAlarmNotification(null)}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl transition-colors shadow-lg shadow-indigo-200 dark:shadow-none text-lg"
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-5xl mx-auto px-4 py-8 sm:py-12">
         <div className="mb-10 flex flex-col sm:flex-row justify-between items-center sm:items-start gap-6">

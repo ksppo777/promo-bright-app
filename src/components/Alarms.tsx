@@ -17,6 +17,7 @@ export default function Alarms({ alarms, setAlarms, books = [] }: AlarmsProps) {
   const [isExpertMode, setIsExpertMode] = useState(false);
   const [selectedBookId, setSelectedBookId] = useState('');
   const [selectedChapterId, setSelectedChapterId] = useState('');
+  const [newAlertMode, setNewAlertMode] = useState<'sound' | 'vibrate' | 'both' | 'off'>('sound');
 
   const addAlarm = () => {
     if (newAlarmDays.length === 0) { try { window.alert('알림을 울릴 요일을 선택해주세요.'); } catch(e){} return; }
@@ -27,13 +28,15 @@ export default function Alarms({ alarms, setAlarms, books = [] }: AlarmsProps) {
       enabled: true,
       expertMode: isExpertMode,
       bookId: isExpertMode ? selectedBookId : undefined,
-      chapterId: isExpertMode ? selectedChapterId : undefined
+      chapterId: isExpertMode ? selectedChapterId : undefined,
+      alertMode: newAlertMode
     };
     setAlarms(prev => [...prev, newAlarm]);
     setNewAlarmDays([]);
     setIsExpertMode(false);
     setSelectedBookId('');
     setSelectedChapterId('');
+    setNewAlertMode('sound');
   };
 
   const toggleAlarmDay = (dayIndex: number) => {
@@ -103,6 +106,26 @@ export default function Alarms({ alarms, setAlarms, books = [] }: AlarmsProps) {
             <button onClick={addAlarm} className="w-full md:w-auto h-12 px-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-colors shrink-0">
               <Plus className="w-5 h-5" /> 추가
             </button>
+          </div>
+
+          <div className="flex gap-2 w-full pt-1">
+            {(['sound', 'vibrate', 'both', 'off'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => setNewAlertMode(m)}
+                className={cn(
+                  "flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all capitalize border",
+                  newAlertMode === m 
+                    ? "bg-indigo-50 border-indigo-200 text-indigo-600 dark:bg-indigo-900/30 dark:border-indigo-800 dark:text-indigo-400" 
+                    : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-700"
+                )}
+              >
+                {m === 'sound' && "소리만"}
+                {m === 'vibrate' && "진동만"}
+                {m === 'both' && "소리+진동"}
+                {m === 'off' && "알림 끔"}
+              </button>
+            ))}
           </div>
 
           {isExpertMode && (
