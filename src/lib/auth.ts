@@ -1,5 +1,5 @@
 import { Capacitor } from '@capacitor/core';
-import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
+import { GoogleSignIn } from '@capawesome/capacitor-google-sign-in';
 
 // AppData drive scope
 const DRIVE_APP_DATA_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
@@ -28,27 +28,19 @@ export const initAuth = (
     try {
       if (Capacitor.isNativePlatform()) {
         try {
-          GoogleAuth.initialize({
+          await GoogleSignIn.initialize({
+            clientId: WEB_CLIENT_ID,
             scopes: ['profile', 'email', DRIVE_APP_DATA_SCOPE],
           });
-          const result = await GoogleAuth.refresh();
-          if (result && result.accessToken) {
-            cachedAccessToken = result.accessToken;
-            cachedUser = {
-              displayName: result.displayName || `${result.givenName || ''} ${result.familyName || ''}`.trim(),
-              email: result.email || null,
-              photoURL: result.imageUrl || null,
-            };
-            if (onAuthSuccessCallback) onAuthSuccessCallback(cachedUser, cachedAccessToken);
-            return;
-          }
+          // capawesome requires explicit signIn for initial token on Android credential manager,
+          // but if we had a saved one we wouldn't show a prompt if we pass proper options, 
+          // or we just skip silent login if no refresh is easily available. 
+          // Or we can just do nothing for silent login on capawesome native and let user click 'login'.
         } catch (e) {
           console.log('Silent login failed for native', e);
         }
       } else {
-        // Web: We can check localStorage if we saved token/user, but access token expires in 1 hour.
-        // GIS doesn't have an automatic silent login for OAuth implicit flow that gives a fresh token without a prompt.
-        // Let's just fail silent login on web for now, or trigger the prompt if needed.
+        // Web silent login skip
       }
     } catch (err) {
       console.log('Init auth error:', err);
@@ -58,7 +50,6 @@ export const initAuth = (
 
   performSilentLogin();
 
-  // Return a dummy unsubscribe function
   return () => {};
 };
 
@@ -77,7 +68,7 @@ const fetchUserInfoFromWeb = async (token: string): Promise<User> => {
 
 export const googleSignIn = async (): Promise<{ user: User, accessToken: string } | null> => {
   if (Capacitor.isNativePlatform()) {
-    const result = await GoogleAuth.signIn();
+    const result = await GoogleSignIn.signIn();
     if (result && result.accessToken) {
       cachedAccessToken = result.accessToken;
       cachedUser = {
@@ -143,7 +134,7 @@ export const setOnAuthSuccessCallback = (cb: (user: User, token: string) => void
 export const logout = async () => {
   if (Capacitor.isNativePlatform()) {
     try {
-      await GoogleAuth.signOut();
+      await GoogleSignIn.signOut();
     } catch(e) {}
   }
   cachedAccessToken = null;

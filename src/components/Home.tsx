@@ -248,7 +248,7 @@ export default function Home({ books, setBooks, sessions, alarms, setAlarms, set
   };
 
   const addAlarm = () => {
-    if (newAlarmDays.length === 0) return alert('알림을 울릴 요일을 선택해주세요.');
+    if (newAlarmDays.length === 0) { try { window.alert('알림을 울릴 요일을 선택해주세요.'); } catch(e){} return; }
     const newAlarm: StudyAlarm = {
       id: Date.now().toString(),
       time: newAlarmTime,

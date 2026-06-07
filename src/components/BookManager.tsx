@@ -126,7 +126,7 @@ export default function BookManager({ books, setBooks }: BookManagerProps) {
     const start = parseInt(newChapterStart, 10);
     const end = parseInt(newChapterEnd, 10);
     
-    if (start > end) return alert('시작 페이지가 끝 페이지보다 클 수 없습니다.');
+    if (start > end) { try { window.alert('시작 페이지가 끝 페이지보다 클 수 없습니다.'); } catch(e){} return; }
 
     const newChapter: Chapter = {
       id: Date.now().toString(),
@@ -253,7 +253,7 @@ export default function BookManager({ books, setBooks }: BookManagerProps) {
     if (!editChapterTitle.trim() || !editChapterStart || !editChapterEnd) return;
     const start = parseInt(editChapterStart, 10);
     const end = parseInt(editChapterEnd, 10);
-    if (start > end) return alert('시작 페이지가 끝 페이지보다 클 수 없습니다.');
+    if (start > end) { try { window.alert('시작 페이지가 끝 페이지보다 클 수 없습니다.'); } catch(e){} return; }
 
     setBooks(prev => prev.map(book => {
       if (book.id === bookId) {
@@ -322,14 +322,14 @@ export default function BookManager({ books, setBooks }: BookManagerProps) {
   const handleSaveAutoGoal = (bookId: string) => {
     if (!agStartDate || !agEndDate || !agIterations) return;
     if (agTargetChapterIds.length === 0) {
-      alert("하나 이상의 챕터를 선택해주세요.");
+      try { window.alert("하나 이상의 챕터를 선택해주세요."); } catch(e){}
       return;
     }
     
     const start = new Date(agStartDate);
     const end = new Date(agEndDate);
     if (end < start) {
-      alert("종료일이 시작일보다 앞설 수 없습니다.");
+      try { window.alert("종료일이 시작일보다 앞설 수 없습니다."); } catch(e){}
       return;
     }
     const diffTime = end.getTime() - start.getTime();
@@ -378,7 +378,9 @@ export default function BookManager({ books, setBooks }: BookManagerProps) {
   };
 
   const handleDeleteAutoGoal = (bookId: string, goalId: string) => {
-    if (!window.confirm("정말 이 자동 도전 목표를 삭제하시겠습니까? (도전 기록은 유지되며 새로운 도전을 생성할 수 있습니다.)")) return;
+    let proceed = true;
+    try { proceed = window.confirm("정말 이 자동 도전 목표를 삭제하시겠습니까? (도전 기록은 유지되며 새로운 도전을 생성할 수 있습니다.)"); } catch(e) { proceed = true; }
+    if (!proceed) return;
     setBooks(prev => prev.map(book => {
       if (book.id !== bookId) return book;
       return {
@@ -1159,7 +1161,9 @@ export default function BookManager({ books, setBooks }: BookManagerProps) {
                   <div className="flex justify-end mb-2">
                     <button 
                       onClick={() => {
-                        if (window.confirm("휴지통의 모든 도서를 영구적으로 삭제하시겠습니까? (이 작업은 되돌릴 수 없습니다.)")) {
+                        let proceed = true;
+                        try { proceed = window.confirm("휴지통의 모든 도서를 영구적으로 삭제하시겠습니까? (이 작업은 되돌릴 수 없습니다.)"); } catch(e) { proceed = true; }
+                        if (proceed) {
                           setBooks(prev => prev.filter(b => !b.isTrash));
                         }
                       }}
@@ -1183,7 +1187,9 @@ export default function BookManager({ books, setBooks }: BookManagerProps) {
                         </button>
                         <button 
                           onClick={() => {
-                            if (window.confirm("정말 영구적으로 삭제하시겠습니까?")) {
+                            let proceed = true;
+                            try { proceed = window.confirm("정말 영구적으로 삭제하시겠습니까?"); } catch(e) { proceed = true; }
+                            if (proceed) {
                               setBooks(prev => prev.filter(b => b.id !== book.id));
                             }
                           }}

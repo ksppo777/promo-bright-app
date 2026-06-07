@@ -486,7 +486,7 @@ export default function App() {
           }
         }
         // Don't auto-delete alarms, just alert.
-        alert(message);
+        try { window.alert(message); } catch(e) { console.log("알람:", message); }
       }
     }, 1000); // Check every 1 second
 

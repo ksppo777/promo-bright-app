@@ -43,7 +43,7 @@ export default function PomodoroTimer({ onSessionComplete, sessions, timerProps,
 
   const toggleTimer = async () => {
     if (!isActive && !timerBookId && mode === 'focus') {
-      alert("목표 교재를 먼저 선택해주세요.");
+      try { window.alert("목표 교재를 먼저 선택해주세요."); } catch(e) {}
       return;
     }
 

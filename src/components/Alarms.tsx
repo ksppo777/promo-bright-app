@@ -19,7 +19,7 @@ export default function Alarms({ alarms, setAlarms, books = [] }: AlarmsProps) {
   const [selectedChapterId, setSelectedChapterId] = useState('');
 
   const addAlarm = () => {
-    if (newAlarmDays.length === 0) return alert('알림을 울릴 요일을 선택해주세요.');
+    if (newAlarmDays.length === 0) { try { window.alert('알림을 울릴 요일을 선택해주세요.'); } catch(e){} return; }
     const newAlarm: StudyAlarm = {
       id: Date.now().toString(),
       time: newAlarmTime,

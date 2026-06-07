@@ -76,12 +76,11 @@ export default function Settings({
       if (res) setUser(res.user);
     } catch (e: any) {
       console.error(e);
-      alert("로그인에 실패했습니다.");
+      try { window.alert("로그인에 실패했습니다."); } catch(err) {}
     }
   };
 
   const handleUpload = async () => {
-    if (!confirm("현재 기기의 데이터를 Google Drive에 수동 백업합니다. 진행하시겠습니까?")) return;
     setIsSyncing(true);
     setSyncStatus("Google Drive에 백업 중...");
     try {
@@ -96,7 +95,6 @@ export default function Settings({
   };
 
   const handleDownload = async () => {
-    if (!confirm("Google Drive에 저장된 최신 데이터로 기기 데이터를 덮어씁니다. 진행하시겠습니까?")) return;
     setIsSyncing(true);
     setSyncStatus("Google Drive에서 복원 중...");
     try {
@@ -128,10 +126,10 @@ export default function Settings({
       await Promise.all(
         Object.entries(data).map(([key, value]) => setStorage(key, value))
       );
-      alert("모든 데이터가 현재 기기에 안전하게 저장되었습니다!");
+      try { window.alert("모든 데이터가 현재 기기에 안전하게 저장되었습니다!"); } catch (e) {}
     } catch (error) {
       console.error("수동 저장 실패", error);
-      alert("수동 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+      try { window.alert("수동 저장에 실패했습니다. 잠시 후 다시 시도해 주세요."); } catch (e) {}
     }
   };
 
@@ -470,11 +468,11 @@ export default function Settings({
           <div className="flex items-center justify-end gap-3 border-t border-slate-100 dark:border-slate-700 pt-4">
             <button
               onClick={() => {
-                if (confirm('기록된 로그를 모두 삭제하시겠습니까?')) {
+                let proceed = true;
+                try { proceed = window.confirm('기록된 로그를 모두 삭제하시겠습니까?'); } catch(e) { proceed = true; }
+                if (proceed) {
                   clearLogs();
-                  alert('로그가 삭제되었습니다.');
-                  setSyncStatus('로그 초기화 완료');
-                  setTimeout(() => setSyncStatus(null), 2000);
+                  showTemporaryStatus('로그가 삭제되었습니다.', 2000);
                 }
               }}
               className="flex items-center justify-center px-4 py-2 text-xs text-red-500 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 rounded-xl font-bold transition-colors"
