@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useLocalStorage } from "./lib/utils";
+import { getAllKeys } from "./lib/storage";
 import { Book, StudySession, StudyAlarm } from "./types";
+import { useTranslation } from "react-i18next";
 import BookManager from "./components/BookManager";
 import PomodoroTimer from "./components/PomodoroTimer";
 import Statistics from "./components/Statistics";
@@ -43,6 +45,8 @@ import { App as CapApp } from "@capacitor/app";
 const AUTO_CLOUD_BACKUP_DEBOUNCE_MS = 8000;
 
 export default function App() {
+  const { t, i18n } = useTranslation();
+  
   const [books, setBooks, isBooksLoaded] = useLocalStorage<Book[]>(
     "study-helper-books",
     []
@@ -103,6 +107,30 @@ export default function App() {
 
   const [localDataTimestamp, setLocalDataTimestamp, isLocalTimestampLoaded] = useLocalStorage<number>("study-helper-timestamp", Date.now());
   const [syncNetworkPreference, setSyncNetworkPreference, isSyncNetworkLoaded] = useLocalStorage<"all" | "wifi_only">("study-helper-network-pref", "all");
+  const [language, setLanguage, isLanguageLoaded] = useLocalStorage<string | null>("study-helper-language", null);
+  const [isNewInstallCheckDone, setIsNewInstallCheckDone] = useState(false);
+
+  useEffect(() => {
+    if (isLanguageLoaded) {
+      if (language === null) {
+        getAllKeys().then((keys) => {
+          const isUpdate = keys.some(k => k.startsWith("study-helper-") && k !== "study-helper-language");
+          if (isUpdate) {
+            setLanguage("ko");
+          }
+          setIsNewInstallCheckDone(true);
+        });
+      } else {
+        setIsNewInstallCheckDone(true);
+      }
+    }
+  }, [isLanguageLoaded, language, setLanguage]);
+
+  useEffect(() => {
+    if (language && i18n.language !== language) {
+      i18n.changeLanguage(language);
+    }
+  }, [language, i18n]);
 
   const isAllLoaded =
     isBooksLoaded &&
@@ -119,7 +147,9 @@ export default function App() {
     isNavLabelsLoaded &&
     isDDaySizeLoaded &&
     isLocalTimestampLoaded &&
-    isSyncNetworkLoaded;
+    isSyncNetworkLoaded &&
+    isLanguageLoaded &&
+    isNewInstallCheckDone;
 
   const cloudSyncPayload = useMemo(
     () => ({
@@ -135,10 +165,12 @@ export default function App() {
       globalFontSize,
       preventWordWrap,
       showNavLabelsMobile,
-      dDaySize
+      dDaySize,
+      language
     }),
-    [books, sessions, alarms, isDarkMode, weeklyPlans, monthlyPlans, dailyGoalMinutes, autoGoalDisplayMode, dDay, globalFontSize, preventWordWrap, showNavLabelsMobile, dDaySize]
+    [books, sessions, alarms, isDarkMode, weeklyPlans, monthlyPlans, dailyGoalMinutes, autoGoalDisplayMode, dDay, globalFontSize, preventWordWrap, showNavLabelsMobile, dDaySize, language]
   );
+
 
   const autoBackupEnabledRef = useRef(false);
   const autoBackupTimerRef = useRef<number | null>(null);
@@ -557,6 +589,7 @@ export default function App() {
     if (data.preventWordWrap !== undefined) setPreventWordWrap(data.preventWordWrap);
     if (data.showNavLabelsMobile !== undefined) setShowNavLabelsMobile(data.showNavLabelsMobile);
     if (data.dDaySize) setDDaySize(data.dDaySize);
+    if (data.language) setLanguage(data.language);
     
     setLocalDataTimestamp(newTimestamp);
   };
@@ -653,14 +686,14 @@ export default function App() {
   };
 
   const navItems = [
-    { id: "home", label: "홈", icon: HomeIcon },
-    { id: "plan", label: "오늘 계획", icon: Target },
-    { id: "books", label: "진도 관리", icon: BookIcon },
-    { id: "timer", label: "타이머", icon: Timer },
-    { id: "calendar", label: "달력", icon: CalendarIcon },
-    { id: "stats", label: "통계", icon: LineChart },
-    { id: "alarms", label: "알림 설정", icon: Bell },
-    { id: "settings", label: "설정", icon: SettingsIcon },
+    { id: "home", label: t('nav.home', "홈"), icon: HomeIcon },
+    { id: "plan", label: t('nav.plan', "오늘 계획"), icon: Target },
+    { id: "books", label: t('nav.books', "진도 관리"), icon: BookIcon },
+    { id: "timer", label: t('nav.timer', "타이머"), icon: Timer },
+    { id: "calendar", label: t('nav.calendar', "달력"), icon: CalendarIcon },
+    { id: "stats", label: t('nav.stats', "통계"), icon: LineChart },
+    { id: "alarms", label: t('nav.alarms', "알림 설정"), icon: Bell },
+    { id: "settings", label: t('nav.settings', "설정"), icon: SettingsIcon },
   ] as const;
 
   if (!isAllLoaded) {
@@ -671,6 +704,41 @@ export default function App() {
           <p className="text-slate-500 dark:text-slate-400 font-bold">
             데이터를 불러오는 중입니다...
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (language === null) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-6">
+        <div className="w-full max-w-sm bg-white dark:bg-slate-800 rounded-3xl p-8 shadow-2xl flex flex-col gap-6">
+          <div className="text-center">
+            <h2 className="text-2xl font-black text-slate-800 dark:text-white mb-2">언어 선택</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
+              Select Language / 言語の選択
+            </p>
+          </div>
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={() => setLanguage('ko')}
+              className="w-full py-4 bg-slate-100 hover:bg-indigo-50 dark:bg-slate-700 dark:hover:bg-indigo-900/30 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-2xl font-bold transition-all flex justify-center items-center gap-2"
+            >
+              한국어
+            </button>
+            <button
+              onClick={() => setLanguage('en')}
+              className="w-full py-4 bg-slate-100 hover:bg-indigo-50 dark:bg-slate-700 dark:hover:bg-indigo-900/30 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-2xl font-bold transition-all flex justify-center items-center gap-2"
+            >
+              English
+            </button>
+            <button
+              onClick={() => setLanguage('ja')}
+              className="w-full py-4 bg-slate-100 hover:bg-indigo-50 dark:bg-slate-700 dark:hover:bg-indigo-900/30 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-2xl font-bold transition-all flex justify-center items-center gap-2"
+            >
+              日本語
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -1063,6 +1131,8 @@ export default function App() {
                 localDataTimestamp={localDataTimestamp}
                 syncNetworkPreference={syncNetworkPreference}
                 setSyncNetworkPreference={setSyncNetworkPreference}
+                language={language}
+                setLanguage={setLanguage}
               />
             )}
           </motion.div>

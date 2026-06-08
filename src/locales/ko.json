@@ -1,0 +1,12 @@
+{
+  "nav": {
+    "home": "홈",
+    "plan": "오늘 계획",
+    "books": "진도 관리",
+    "timer": "타이머",
+    "calendar": "달력",
+    "stats": "통계",
+    "alarms": "알림 설정",
+    "settings": "설정"
+  }
+}

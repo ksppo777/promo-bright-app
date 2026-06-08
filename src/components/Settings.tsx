@@ -37,6 +37,8 @@ interface SettingsProps {
   localDataTimestamp: number;
   syncNetworkPreference: "all" | "wifi_only";
   setSyncNetworkPreference: (val: "all" | "wifi_only") => void;
+  language: string | null;
+  setLanguage: (val: string) => void;
 }
 
 export default function Settings({
@@ -57,6 +59,8 @@ export default function Settings({
   localDataTimestamp,
   syncNetworkPreference,
   setSyncNetworkPreference,
+  language,
+  setLanguage,
 }: SettingsProps) {
   const [user, setUser] = useState<User | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -167,6 +171,25 @@ export default function Settings({
           <h2 className="text-[13px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">디스플레이 및 환경설정</h2>
         </div>
         <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
+          {/* Language */}
+          <div className="px-5 py-4 flex items-center justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 mb-1">
+                언어 설정
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">앱에서 사용할 언어를 선택하세요.</p>
+            </div>
+            <select
+              value={language || "ko"}
+              onChange={(e) => setLanguage(e.target.value)}
+              className="shrink-0 px-3 py-2 text-xs bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 rounded-xl font-bold cursor-pointer outline-none"
+            >
+              <option value="ko">한국어</option>
+              <option value="en">English</option>
+              <option value="ja">日本語</option>
+            </select>
+          </div>
+
           {/* Dark Mode */}
           <div className="px-5 py-4 flex items-center justify-between gap-4">
             <div>

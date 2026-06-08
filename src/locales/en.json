@@ -1,0 +1,12 @@
+{
+  "nav": {
+    "home": "Home",
+    "plan": "Today",
+    "books": "Books",
+    "timer": "Timer",
+    "calendar": "Calendar",
+    "stats": "Stats",
+    "alarms": "Alarms",
+    "settings": "Settings"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "nav": {
+    "home": "ホーム",
+    "plan": "今日の計画",
+    "books": "進捗管理",
+    "timer": "タイマー",
+    "calendar": "カレンダー",
+    "stats": "統計",
+    "alarms": "アラーム",
+    "settings": "設定"
+  }
+}
