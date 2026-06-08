@@ -105,6 +105,8 @@ export default function App() {
   const [autoBackupStatus, setAutoBackupStatus] =
     useState<string>("자동 백업 대기 중");
 
+  const [hideHeroText, setHideHeroText, isHideHeroLoaded] = useLocalStorage<boolean>("study-helper-hide-hero", false);
+
   const [localDataTimestamp, setLocalDataTimestamp, isLocalTimestampLoaded] = useLocalStorage<number>("study-helper-timestamp", Date.now());
   const [syncNetworkPreference, setSyncNetworkPreference, isSyncNetworkLoaded] = useLocalStorage<"all" | "wifi_only">("study-helper-network-pref", "all");
   const [language, setLanguage, isLanguageLoaded] = useLocalStorage<string | null>("study-helper-language", null);
@@ -149,6 +151,7 @@ export default function App() {
     isLocalTimestampLoaded &&
     isSyncNetworkLoaded &&
     isLanguageLoaded &&
+    isHideHeroLoaded &&
     isNewInstallCheckDone;
 
   const cloudSyncPayload = useMemo(
@@ -166,9 +169,10 @@ export default function App() {
       preventWordWrap,
       showNavLabelsMobile,
       dDaySize,
-      language
+      language,
+      hideHeroText
     }),
-    [books, sessions, alarms, isDarkMode, weeklyPlans, monthlyPlans, dailyGoalMinutes, autoGoalDisplayMode, dDay, globalFontSize, preventWordWrap, showNavLabelsMobile, dDaySize, language]
+    [books, sessions, alarms, isDarkMode, weeklyPlans, monthlyPlans, dailyGoalMinutes, autoGoalDisplayMode, dDay, globalFontSize, preventWordWrap, showNavLabelsMobile, dDaySize, language, hideHeroText]
   );
 
 
@@ -590,6 +594,7 @@ export default function App() {
     if (data.showNavLabelsMobile !== undefined) setShowNavLabelsMobile(data.showNavLabelsMobile);
     if (data.dDaySize) setDDaySize(data.dDaySize);
     if (data.language) setLanguage(data.language);
+    if (data.hideHeroText !== undefined) setHideHeroText(data.hideHeroText);
     
     setLocalDataTimestamp(newTimestamp);
   };
@@ -702,7 +707,7 @@ export default function App() {
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="w-12 h-12 text-indigo-500 animate-spin" />
           <p className="text-slate-500 dark:text-slate-400 font-bold">
-            데이터를 불러오는 중입니다...
+            {t('loader.loadingData')}
           </p>
         </div>
       </div>
@@ -714,9 +719,9 @@ export default function App() {
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center p-6">
         <div className="w-full max-w-sm bg-white dark:bg-slate-800 rounded-3xl p-8 shadow-2xl flex flex-col gap-6">
           <div className="text-center">
-            <h2 className="text-2xl font-black text-slate-800 dark:text-white mb-2">언어 선택</h2>
+            <h2 className="text-2xl font-black text-slate-800 dark:text-white mb-2">{t('languageSelection.title')}</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
-              Select Language / 言語の選択
+              {t('languageSelection.subtitle')}
             </p>
           </div>
           <div className="flex flex-col gap-3">
@@ -724,19 +729,19 @@ export default function App() {
               onClick={() => setLanguage('ko')}
               className="w-full py-4 bg-slate-100 hover:bg-indigo-50 dark:bg-slate-700 dark:hover:bg-indigo-900/30 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-2xl font-bold transition-all flex justify-center items-center gap-2"
             >
-              한국어
+              {t('languageSelection.ko')}
             </button>
             <button
               onClick={() => setLanguage('en')}
               className="w-full py-4 bg-slate-100 hover:bg-indigo-50 dark:bg-slate-700 dark:hover:bg-indigo-900/30 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-2xl font-bold transition-all flex justify-center items-center gap-2"
             >
-              English
+              {t('languageSelection.en')}
             </button>
             <button
               onClick={() => setLanguage('ja')}
               className="w-full py-4 bg-slate-100 hover:bg-indigo-50 dark:bg-slate-700 dark:hover:bg-indigo-900/30 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-2xl font-bold transition-all flex justify-center items-center gap-2"
             >
-              日本語
+              {t('languageSelection.ja')}
             </button>
           </div>
         </div>
@@ -821,12 +826,12 @@ export default function App() {
               {timerEndNotification === "focus_ended" ? "🎉" : "💪"}
             </div>
             <h3 className="text-2xl font-black text-slate-800 dark:text-white mb-3">
-              {timerEndNotification === "focus_ended" ? "학습 시간 종료!" : "휴식 시간 종료!"}
+              {timerEndNotification === "focus_ended" ? t('timerEndModal.focusEndedTitle') : t('timerEndModal.breakEndedTitle')}
             </h3>
             <p className="text-slate-600 dark:text-slate-300 mb-8 font-medium">
               {timerEndNotification === "focus_ended" 
-                ? "고생하셨습니다! 충분한 휴식을 취하세요." 
-                : "휴식을 마쳤습니다! 다시 집중해볼까요?"}
+                ? t('timerEndModal.focusEndedBody') 
+                : t('timerEndModal.breakEndedBody')}
             </p>
             <button
               onClick={() => {
@@ -842,7 +847,7 @@ export default function App() {
               }}
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl transition-colors shadow-lg shadow-indigo-200 dark:shadow-none text-lg"
             >
-              확인 (다음 단계 시작)
+              {t('timerEndModal.confirm')}
             </button>
           </div>
         </div>
@@ -856,7 +861,7 @@ export default function App() {
               ⏰
             </div>
             <h3 className="text-2xl font-black text-slate-800 dark:text-white mb-3">
-              학습 시간입니다!
+              {t('alarmNotification.title')}
             </h3>
             <p className="text-slate-600 dark:text-slate-300 mb-8 font-medium">
               {(() => {
@@ -867,36 +872,39 @@ export default function App() {
                      return chapter ? `${book.title} ${chapter.title} 공부할 시간이에요!` : `${book.title} 공부할 시간이에요!`;
                    }
                  }
-                 return "규칙적인 학습 시간이 되었습니다! 학습을 시작해볼까요?";
+                 return t('alarmNotification.defaultBody');
               })()}
             </p>
             <button
               onClick={() => setActiveAlarmNotification(null)}
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl transition-colors shadow-lg shadow-indigo-200 dark:shadow-none text-lg"
             >
-              확인
+              {t('alarmNotification.confirm')}
             </button>
           </div>
         </div>
       )}
 
       <main className="max-w-5xl mx-auto px-4 py-8 sm:py-12">
-        <div className="mb-10 flex flex-col sm:flex-row justify-between items-center sm:items-start gap-6">
-          <div className="text-center sm:text-left">
-            <h2 className="text-3xl sm:text-4xl font-black text-slate-800 dark:text-white mb-3 tracking-tight">
-              {activeTab === "home" && "오늘도 목표를 향해 달려볼까요? 🚀"}
-              {activeTab === "plan" && "오늘의 학습 목표를 설정해볼까요? 🎯"}
-              {activeTab === "books" && "오늘의 목표를 달성해볼까요? 🌟"}
-              {activeTab === "timer" && "딱 25분만 집중해보아요! ⏰"}
-              {activeTab === "calendar" && "나의 학습 기록과 계획 📅"}
-              {activeTab === "stats" && "꾸준함이 만드는 기적 ✨"}
-              {activeTab === "alarms" && "학습 리듬을 만들어보세요 ⏰"}
-              {activeTab === "settings" && "나만의 학습 환경 설정 ⚙️"}
-            </h2>
-          </div>
+        {(!hideHeroText || activeTab === "home") && (
+          <div className="mb-10 flex flex-col sm:flex-row justify-between items-center sm:items-start gap-6">
+            {!hideHeroText && (
+              <div className="text-center sm:text-left">
+                <h2 className="text-3xl sm:text-4xl font-black text-slate-800 dark:text-white mb-3 tracking-tight">
+                  {activeTab === "home" && t('hero.home')}
+                  {activeTab === "plan" && t('hero.plan')}
+                  {activeTab === "books" && t('hero.books')}
+                  {activeTab === "timer" && t('hero.timer')}
+                  {activeTab === "calendar" && t('hero.calendar')}
+                  {activeTab === "stats" && t('hero.stats')}
+                  {activeTab === "alarms" && t('hero.alarms')}
+                  {activeTab === "settings" && t('hero.settings')}
+                </h2>
+              </div>
+            )}
 
-          {/* D-Day Header Component */}
-          {activeTab === "home" && (
+            {/* D-Day Header Component */}
+            {activeTab === "home" && (
             <div className="bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 flex flex-col justify-center relative overflow-visible group min-w-[240px]">
               <div className="absolute top-3 right-3" ref={dDayMenuRef}>
                 <button
@@ -957,11 +965,11 @@ export default function App() {
               {isEditingDDay ? (
                 <div className="space-y-3 pt-1">
                   <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                    D-Day 설정
+                    {t('dDay.title')}
                   </h3>
                   <input
                     type="text"
-                    placeholder="시험/목표 이름"
+                    placeholder={t('dDay.namePlaceholder')}
                     value={dDayTitleInput}
                     onChange={(e) => setDDayTitleInput(e.target.value)}
                     className="w-full text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-900 dark:text-white"
@@ -977,13 +985,13 @@ export default function App() {
                       onClick={handleSaveDDay}
                       className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-bold py-1.5 rounded transition-colors"
                     >
-                      저장
+                      {t('common.save')}
                     </button>
                     <button
                       onClick={() => setIsEditingDDay(false)}
                       className="flex-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 text-xs font-bold py-1.5 rounded transition-colors"
                     >
-                      취소
+                      {t('common.cancel')}
                     </button>
                   </div>
                 </div>
@@ -996,7 +1004,7 @@ export default function App() {
                     <Plus className="w-4 h-4" />
                   </div>
                   <p className="text-xs text-slate-500 font-bold">
-                    D-Day 추가하기
+                    {t('dDay.add')}
                   </p>
                 </div>
               ) : (
@@ -1034,6 +1042,7 @@ export default function App() {
             </div>
           )}
         </div>
+        )}
 
         <AnimatePresence mode="wait">
           <motion.div
@@ -1126,6 +1135,8 @@ export default function App() {
                 setPreventWordWrap={setPreventWordWrap}
                 showNavLabelsMobile={showNavLabelsMobile}
                 setShowNavLabelsMobile={setShowNavLabelsMobile}
+                hideHeroText={hideHeroText}
+                setHideHeroText={setHideHeroText}
                 autoBackupStatus={autoBackupStatus}
                 lastAutoBackupAt={lastAutoBackupAt}
                 localDataTimestamp={localDataTimestamp}

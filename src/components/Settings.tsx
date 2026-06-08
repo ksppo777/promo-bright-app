@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from 'react-i18next';
 import { initAuth, googleSignIn, logout, User } from "../lib/auth";
 import { syncToDrive, syncFromDrive, getDriveSyncMetadata } from "../lib/driveSync";
 import { getIsLogMode, setIsLogModeConfig, clearLogs, exportLogsStr } from "../lib/logger";
@@ -32,6 +33,8 @@ interface SettingsProps {
   setPreventWordWrap: (val: boolean) => void;
   showNavLabelsMobile: boolean;
   setShowNavLabelsMobile: (val: boolean) => void;
+  hideHeroText: boolean;
+  setHideHeroText: (val: boolean | ((prev: boolean) => boolean)) => void;
   autoBackupStatus: string;
   lastAutoBackupAt: string | null;
   localDataTimestamp: number;
@@ -54,6 +57,8 @@ export default function Settings({
   setPreventWordWrap,
   showNavLabelsMobile,
   setShowNavLabelsMobile,
+  hideHeroText,
+  setHideHeroText,
   autoBackupStatus,
   lastAutoBackupAt,
   localDataTimestamp,
@@ -62,6 +67,7 @@ export default function Settings({
   language,
   setLanguage,
 }: SettingsProps) {
+  const { t } = useTranslation();
   const [user, setUser] = useState<User | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
@@ -105,19 +111,19 @@ export default function Settings({
       if (res) setUser(res.user);
     } catch (e: any) {
       console.error(e);
-      try { window.alert("로그인에 실패했습니다."); } catch(err) {}
+      try { window.alert(t('settings.sync.loginFailed')); } catch(err) {}
     }
   };
 
   const handleUpload = async () => {
     setIsSyncing(true);
-    setSyncStatus("Google Drive에 백업 중...");
+    setSyncStatus(t('settings.sync.uploading'));
     try {
       const data = getAllData();
       await syncToDrive(data, Date.now());
-      showTemporaryStatus("Google Drive 백업 완료!");
+      showTemporaryStatus(t('settings.sync.uploadComplete'));
     } catch (e: any) {
-      showTemporaryStatus(`백업 실패: ${e.message}`, 6000);
+      showTemporaryStatus(t('settings.sync.uploadFailed', { message: e.message }), 6000);
     } finally {
       setIsSyncing(false);
     }
@@ -125,17 +131,17 @@ export default function Settings({
 
   const handleDownload = async () => {
     setIsSyncing(true);
-    setSyncStatus("Google Drive에서 복원 중...");
+    setSyncStatus(t('settings.sync.downloading'));
     try {
       const res = await syncFromDrive();
       if (res && res.data) {
         onDataSync(res.data, res.timestamp);
-        showTemporaryStatus("Google Drive 복원 완료!");
+        showTemporaryStatus(t('settings.sync.downloadComplete'));
       } else {
-        showTemporaryStatus("저장된 데이터가 없습니다.");
+        showTemporaryStatus(t('settings.sync.noData'));
       }
     } catch (e: any) {
-      showTemporaryStatus(`복원 실패: ${e.message}`, 6000);
+      showTemporaryStatus(t('settings.sync.downloadFailed', { message: e.message }), 6000);
     } finally {
       setIsSyncing(false);
     }
@@ -155,38 +161,36 @@ export default function Settings({
       await Promise.all(
         Object.entries(data).map(([key, value]) => setStorage(key, value))
       );
-      try { window.alert("모든 데이터가 현재 기기에 안전하게 저장되었습니다!"); } catch (e) {}
+      try { window.alert(t('settings.localSave.saved')); } catch (e) {}
     } catch (error) {
-      console.error("수동 저장 실패", error);
-      try { window.alert("수동 저장에 실패했습니다. 잠시 후 다시 시도해 주세요."); } catch (e) {}
+      console.error(t('settings.localSave.manualSaveError'), error);
+      try { window.alert(t('settings.localSave.manualSaveError')); } catch (e) {}
     }
   };
 
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-6 pb-12 px-2 sm:px-4 md:px-0">
-      
-      {/* 1. 디스플레이 및 인터페이스 */}
+    <div className="flex flex-col gap-4 pb-20">
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
         <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
-          <h2 className="text-[13px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">디스플레이 및 환경설정</h2>
+          <h2 className="text-[13px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">{t('settings.display.title')}</h2>
         </div>
         <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
           {/* Language */}
           <div className="px-5 py-4 flex items-center justify-between gap-4">
             <div>
               <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 mb-1">
-                언어 설정
+                {t('settings.language.title')}
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">앱에서 사용할 언어를 선택하세요.</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{t('settings.language.desc')}</p>
             </div>
             <select
               value={language || "ko"}
               onChange={(e) => setLanguage(e.target.value)}
               className="shrink-0 px-3 py-2 text-xs bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 rounded-xl font-bold cursor-pointer outline-none"
             >
-              <option value="ko">한국어</option>
-              <option value="en">English</option>
-              <option value="ja">日本語</option>
+              <option value="ko">{t('settings.language.ko')}</option>
+              <option value="en">{t('settings.language.en')}</option>
+              <option value="ja">{t('settings.language.ja')}</option>
             </select>
           </div>
 
@@ -195,15 +199,15 @@ export default function Settings({
             <div>
               <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 mb-1">
                 {isDarkMode ? <Moon className="w-4 h-4 text-indigo-400" /> : <Sun className="w-4 h-4 text-orange-400" />}
-                화면 테마
+                {t('settings.theme.title')}
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">눈이 편안한 테마로 변경합니다.</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{t('settings.theme.desc')}</p>
             </div>
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
               className="shrink-0 px-4 py-2 text-xs bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold transition-colors hover:bg-slate-200 dark:hover:bg-slate-600"
             >
-              {isDarkMode ? "밝은 테마" : "어두운 테마"}
+              {isDarkMode ? t('settings.theme.light') : t('settings.theme.dark')}
             </button>
           </div>
 
@@ -212,9 +216,9 @@ export default function Settings({
             <div>
               <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 mb-1">
                 <Type className="w-4 h-4 text-slate-400" />
-                글자 크기
+                {t('settings.fontSize.title')}
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">전체 텍스트 크기를 조절합니다.</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{t('settings.fontSize.desc')}</p>
             </div>
             <div className="shrink-0 flex items-center gap-1 bg-slate-50 dark:bg-slate-900/50 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
               <button
@@ -238,9 +242,9 @@ export default function Settings({
             <div>
                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 mb-1">
                 <AlignLeft className="w-4 h-4 text-indigo-400" />
-                글자 짤림 방지
+                {t('settings.preventWrap.title')}
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">단어 중간의 줄바꿈을 방지합니다.</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{t('settings.preventWrap.desc')}</p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer shrink-0">
               <input type="checkbox" className="sr-only peer" checked={preventWordWrap} onChange={(e) => setPreventWordWrap(e.target.checked)} />
@@ -253,9 +257,9 @@ export default function Settings({
             <div>
                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 mb-1">
                 <Target className="w-4 h-4 text-indigo-400" />
-                모바일 상단 메뉴 표시
+                {t('settings.mobileNav.title')}
               </h3>
-               <p className="text-xs text-slate-500 dark:text-slate-400">작은 화면에서 탭 메뉴명(텍스트)을 함께 표시합니다.</p>
+               <p className="text-xs text-slate-500 dark:text-slate-400">{t('settings.mobileNav.desc')}</p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer shrink-0">
               <input type="checkbox" className="sr-only peer" checked={showNavLabelsMobile} onChange={(e) => setShowNavLabelsMobile(e.target.checked)} />
@@ -268,28 +272,42 @@ export default function Settings({
              <div>
                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 mb-1">
                 <Target className="w-4 h-4 text-red-500" />
-                자동 도전 표시 형태
+                {t('settings.autoGoal.title')}
               </h3>
-               <p className="text-xs text-slate-500 dark:text-slate-400">진행중인 자동 도전을 어떻게 표시할지 설정합니다.</p>
+               <p className="text-xs text-slate-500 dark:text-slate-400">{t('settings.autoGoal.desc')}</p>
             </div>
             <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-xl shrink-0 w-full sm:w-auto">
               <button
                 onClick={() => setAutoGoalDisplayMode("multiple")}
                 className={cn("flex-1 sm:flex-none px-4 py-2 font-bold text-xs rounded-lg transition-colors", autoGoalDisplayMode === "multiple" ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200")}
-              >개별 블록</button>
+              >{t('settings.autoGoal.multiple')}</button>
               <button
                 onClick={() => setAutoGoalDisplayMode("single")}
                 className={cn("flex-1 sm:flex-none px-4 py-2 font-bold text-xs rounded-lg transition-colors", autoGoalDisplayMode === "single" ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200")}
-              >분할 표시</button>
+              >{t('settings.autoGoal.single')}</button>
             </div>
+          </div>
+          {/* Hide Hero Text */}
+          <div className="px-5 py-4 flex items-center justify-between gap-4">
+            <div>
+               <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 mb-1">
+                <AlignLeft className="w-4 h-4 text-indigo-400" />
+                {t('settings.hideHeroText.title', '상단 인사말 숨기기')}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{t('settings.hideHeroText.desc', '각 탭 최상단의 인사말 문구를 화면에서 감춥니다.')}</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input type="checkbox" className="sr-only peer" checked={hideHeroText} onChange={(e) => setHideHeroText(e.target.checked)} />
+              <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-500"></div>
+            </label>
           </div>
         </div>
       </div>
 
-      {/* 2. 데이터 및 동기화 */}
+      {/* 2. Data & Sync */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
         <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
-          <h2 className="text-[13px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">데이터 & 동기화</h2>
+          <h2 className="text-[13px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">{t('settings.sync.title')}</h2>
         </div>
         <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
           
@@ -301,20 +319,20 @@ export default function Settings({
                     <Cloud className="w-5 h-5" />
                   </div>
                   <div className="overflow-hidden w-full min-w-0 pr-2">
-                    <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1 truncate">구글 클라우드 동기화</h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate w-full" style={{minWidth:0}}>모든 기기에서 데이터를 안전하게 연동합니다.</p>
+                    <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-1 truncate">{t('settings.sync.google.title')}</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate w-full" style={{minWidth:0}}>{t('settings.sync.google.desc')}</p>
                   </div>
                 </div>
                 {user && (
-                   <button onClick={logout} className="shrink-0 p-2.5 text-slate-400 hover:text-red-500 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-xl transition-colors" title="로그아웃">
+                   <button onClick={logout} className="shrink-0 p-2.5 text-slate-400 hover:text-red-500 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-xl transition-colors" title={t('settings.sync.logout')}>
                      <LogOut className="w-4 h-4" />
                    </button>
                 )}
              </div>
 
              {!user ? (
-               <div className="flex flex-col items-center justify-center py-6 bg-slate-50 dark:bg-slate-900/30 rounded-xl border border-slate-200 dark:border-slate-700/50">
-                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-4 text-center">동기화 기능을 사용하려면 클라우드 계정에 로그인하세요.</p>
+              <div className="flex flex-col items-center justify-center py-6 bg-slate-50 dark:bg-slate-900/30 rounded-xl border border-slate-200 dark:border-slate-700/50">
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-4 text-center">{t('settings.sync.loginPrompt')}</p>
                   <button className="gsi-material-button scale-95 origin-center -my-1" onClick={handleLogin}>
                     <div className="gsi-material-button-state"></div>
                     <div className="gsi-material-button-content-wrapper">
@@ -327,7 +345,7 @@ export default function Settings({
                           <path fill="none" d="M0 0h48v48H0z"></path>
                         </svg>
                       </div>
-                      <span className="gsi-material-button-contents">Sign in with Google</span>
+                      <span className="gsi-material-button-contents">{t('settings.sync.signIn')}</span>
                     </div>
                   </button>
                </div>
@@ -336,25 +354,25 @@ export default function Settings({
                  <div className="flex items-center gap-3 p-3 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-xl border border-emerald-100 dark:border-emerald-800/50">
                     <img src={user.photoURL || ""} alt="Profile" className="w-8 h-8 rounded-full shadow-sm" />
                     <div className="flex flex-col min-w-0">
-                      <span className="font-bold text-sm text-slate-800 dark:text-slate-200 truncate">{user.displayName || "Google 계정"}</span>
+                      <span className="font-bold text-sm text-slate-800 dark:text-slate-200 truncate">{user.displayName || t('settings.sync.googleFallback')}</span>
                       <span className="text-xs text-slate-500 dark:text-slate-400 truncate">{user.email}</span>
                     </div>
                  </div>
                  
                  <div className="grid grid-cols-2 gap-3">
                    <button onClick={handleUpload} disabled={isSyncing} className="flex items-center justify-center gap-2 p-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-xl text-sm font-bold transition-colors shadow-sm">
-                     <Upload className="w-4 h-4" /> 데이터 백업
+                     <Upload className="w-4 h-4" /> {t('settings.sync.upload')}
                    </button>
                    <button onClick={handleDownload} disabled={isSyncing} className="flex items-center justify-center gap-2 p-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white rounded-xl text-sm font-bold transition-colors shadow-sm">
-                     <Download className="w-4 h-4" /> 불러오기
+                     <Download className="w-4 h-4" /> {t('settings.sync.download')}
                    </button>
                  </div>
                  
                  <div className="flex flex-col gap-3 p-3 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-100 dark:border-slate-700">
                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                      <div className="flex flex-col gap-0.5">
-                       <span className="font-bold text-slate-700 dark:text-slate-300">자동 연동 활성화 상태</span>
-                       <span className="text-[11px] text-slate-500 dark:text-slate-400">인터넷 연결 시 백그라운드 자동 연동</span>
+                       <span className="font-bold text-slate-700 dark:text-slate-300">{t('settings.sync.autoStatusTitle')}</span>
+                       <span className="text-[11px] text-slate-500 dark:text-slate-400">{t('settings.sync.autoStatusDesc')}</span>
                      </div>
                      <span className="font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100/50 dark:bg-emerald-900/30 px-3 py-1.5 rounded-lg text-center">{autoBackupStatus}</span>
                    </div>
@@ -363,13 +381,13 @@ export default function Settings({
 
                    <div className="flex flex-col gap-2">
                      <div className="flex items-center justify-between text-[11px]">
-                       <span className="text-slate-500 font-medium whitespace-nowrap">현재 기기 데이터 (수정 기준)</span>
+                       <span className="text-slate-500 font-medium whitespace-nowrap">{t('settings.sync.localData')}</span>
                        <span className="font-bold text-slate-700 dark:text-slate-300 truncate pl-2">{new Date(localDataTimestamp).toLocaleString()}</span>
                      </div>
                      <div className="flex items-center justify-between text-[11px]">
-                       <span className="text-slate-500 font-medium whitespace-nowrap">구글 클라우드 백업 (최신 버전)</span>
+                       <span className="text-slate-500 font-medium whitespace-nowrap">{t('settings.sync.remoteData')}</span>
                        <span className="font-bold text-blue-600 dark:text-blue-400 truncate pl-2">
-                         {isFetchingRemoteDate ? "확인 중..." : remoteDataTimestamp ? new Date(remoteDataTimestamp).toLocaleString() : "없음"}
+                         {isFetchingRemoteDate ? t('settings.sync.checking') : remoteDataTimestamp ? new Date(remoteDataTimestamp).toLocaleString() : t('common.none')}
                        </span>
                      </div>
                    </div>
@@ -377,14 +395,14 @@ export default function Settings({
                    <div className="w-full h-px bg-slate-200 dark:bg-slate-700/50" />
 
                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                     <span className="font-bold text-slate-700 dark:text-slate-300">백업/동기화 가능한 네트워크 연결 수단</span>
+                     <span className="font-bold text-slate-700 dark:text-slate-300">{t('settings.sync.networkTitle')}</span>
                      <select 
                        value={syncNetworkPreference} 
                        onChange={(e) => setSyncNetworkPreference(e.target.value as "all" | "wifi_only")}
                        className="px-2 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg outline-none cursor-pointer"
                      >
-                       <option value="all">Wi-Fi 및 모바일 데이터 모두</option>
-                       <option value="wifi_only">Wi-Fi 에서만 (모바일 데이터 절약)</option>
+                       <option value="all">{t('settings.sync.network.all')}</option>
+                       <option value="wifi_only">{t('settings.sync.network.wifi_only')}</option>
                      </select>
                    </div>
                  </div>
@@ -398,21 +416,21 @@ export default function Settings({
             <div>
               <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 mb-1">
                 <Check className="w-4 h-4 text-emerald-500" />
-                기기에 직접 저장
+                {t('settings.localSave.title')}
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">오프라인에서도 안전하게 데이터를 저장해 둡니다.</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{t('settings.localSave.desc')}</p>
             </div>
             <button onClick={handleManualSave} className="shrink-0 w-full sm:w-auto px-5 py-2.5 text-sm bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl font-bold transition-colors shadow-sm">
-              수동 저장
+              {t('settings.localSave.saveButton')}
             </button>
           </div>
         </div>
       </div>
 
-      {/* 3. 고급 설정 및 지원 */}
+      {/* 3. Advanced Settings & Support */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
         <div className="px-5 py-3.5 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
-          <h2 className="text-[13px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">고급 및 지원</h2>
+          <h2 className="text-[13px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">{t('settings.advanced.title')}</h2>
         </div>
         <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
           
@@ -421,12 +439,12 @@ export default function Settings({
             <div>
               <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 mb-1">
                 <MessageCircle className="w-4 h-4 text-purple-500" />
-                고객센터 1:1 문의
+                {t('settings.support.title')}
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">디스코드 채널을 통해 오류 및 의견 전송</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{t('settings.support.desc')}</p>
             </div>
             <button onClick={() => setShowSupportModal(true)} className="shrink-0 px-4 py-2 bg-purple-50 hover:bg-purple-100 dark:bg-purple-900/20 dark:hover:bg-purple-900/40 text-purple-600 dark:text-purple-400 rounded-xl text-xs font-bold transition-colors">
-              문의하기
+              {t('settings.support.contact')}
             </button>
           </div>
 
@@ -436,28 +454,28 @@ export default function Settings({
                <div>
                   <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 mb-1">
                     <Check className="w-4 h-4 text-indigo-500" />
-                    디버그 로그 모드
+                    {t('settings.devLogs.title')}
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">개발자 오류 분석 목적으로 작동기록을 저장합니다.</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{t('settings.devLogs.desc')}</p>
                </div>
                <label className="relative inline-flex items-center cursor-pointer shrink-0">
                   <input type="checkbox" className="sr-only peer" checked={isLogMode} onChange={(e) => {
                     const val = e.target.checked;
                     setIsLogModeConfig(val);
                     setIsLogMode(val);
-                    showTemporaryStatus(`로그 기록 모드가 ${val ? '켜졌' : '꺼졌'}습니다.`, 2000);
+                    showTemporaryStatus(val ? t('settings.devLogs.enabled') : t('settings.devLogs.disabled'), 2000);
                   }} />
                   <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-500"></div>
                </label>
              </div>
              {isLogMode && (
                 <div className="flex items-center justify-end gap-3 pt-1">
-                  <button onClick={() => {
+                    <button onClick={() => {
                     let proceed = true;
-                    try { proceed = window.confirm('기록된 로그를 모두 삭제하시겠습니까?'); } catch(e) { proceed = true; }
-                    if (proceed) { clearLogs(); showTemporaryStatus('로그가 삭제되었습니다.', 2000); }
+                    try { proceed = window.confirm(t('settings.devLogs.confirmDelete')); } catch(e) { proceed = true; }
+                    if (proceed) { clearLogs(); showTemporaryStatus(t('settings.devLogs.deleted'), 2000); }
                   }} className="px-4 py-2 text-xs font-bold text-red-500 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 rounded-xl transition-colors">
-                    로그 지우기
+                    {t('settings.devLogs.clear')}
                   </button>
                   <button onClick={() => {
                     const logsStr = exportLogsStr();
@@ -467,7 +485,7 @@ export default function Settings({
                     a.download = `BrightStudy_Logs_${new Date().toISOString().slice(0, 10)}.json`;
                     a.click(); URL.revokeObjectURL(url);
                   }} className="px-4 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl transition-colors">
-                    로그 추출 (.json)
+                    {t('settings.devLogs.export')}
                   </button>
                 </div>
              )}
@@ -476,11 +494,11 @@ export default function Settings({
           {/* Factory Reset */}
           <div className="px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-red-50/50 dark:bg-red-900/10">
             <div>
-              <h3 className="text-sm font-bold text-red-600 dark:text-red-400 mb-1">앱 데이터 초기화</h3>
-              <p className="text-xs text-red-500/80 dark:text-red-400/80">기기에 보관된 앱 관련 데이터를 완전히 비웁니다.</p>
+              <h3 className="text-sm font-bold text-red-600 dark:text-red-400 mb-1">{t('settings.factory.title')}</h3>
+              <p className="text-xs text-red-500/80 dark:text-red-400/80">{t('settings.factory.desc')}</p>
             </div>
             <button onClick={() => setShowResetModal(true)} className="shrink-0 w-full sm:w-auto px-4 py-2 text-xs bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 rounded-xl font-bold transition-colors">
-              초기화 설정
+              {t('settings.factory.resetButton')}
             </button>
           </div>
         </div>
@@ -496,11 +514,10 @@ export default function Settings({
           >
             <div>
               <h3 className="text-xl font-black text-red-600 dark:text-red-400 mb-2">
-                정말 삭제하겠습니까?
+                {t('settings.factory.confirmTitle')}
               </h3>
               <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                삭제된 데이터는 복구할 수 없습니다. 클라우드에 백업을 해둔
-                경우 나중에 복원할 수 있습니다.
+                {t('settings.factory.confirmDesc')}
               </p>
             </div>
 
@@ -509,13 +526,13 @@ export default function Settings({
                 onClick={handleFactoryReset}
                 className="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl transition-colors text-sm"
               >
-                삭제하기
+                {t('common.delete')}
               </button>
               <button
                 onClick={() => setShowResetModal(false)}
                 className="flex-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold py-3 rounded-xl transition-colors text-sm"
               >
-                취소
+                {t('common.cancel')}
               </button>
             </div>
           </motion.div>
@@ -532,10 +549,10 @@ export default function Settings({
             <div>
               <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
                 <MessageCircle className="w-6 h-6 text-purple-500" />
-                고객센터
+                {t('settings.support.modalTitle')}
               </h3>
               <p className="text-sm font-medium text-slate-600 dark:text-slate-300 leading-relaxed text-center break-keep">
-                오류 발견 및 개선 사항 제안 등 문의사항은 아래 커뮤니티로 보내주세요.
+                {t('settings.support.modalDesc')}
                 <br /><br />
                 <a
                   href="https://discord.gg/4GHSDBDAnE"
@@ -543,7 +560,7 @@ export default function Settings({
                   rel="noreferrer"
                   className="px-4 py-3 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-bold rounded-xl inline-block w-full hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
                 >
-                  디스코드 채널로 이동
+                  {t('settings.support.discord')}
                 </a>
               </p>
             </div>
@@ -552,7 +569,7 @@ export default function Settings({
               onClick={() => setShowSupportModal(false)}
               className="w-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold py-3 rounded-xl transition-colors text-sm mt-2"
             >
-              닫기
+              {t('common.close')}
             </button>
           </motion.div>
         </div>
