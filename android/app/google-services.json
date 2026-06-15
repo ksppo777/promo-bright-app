@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "926621621039",
+    "project_id": "bright-study-app",
+    "storage_bucket": "bright-study-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:926621621039:android:deb135f5b8feb883bb1fda",
+        "android_client_info": {
+          "package_name": "com.brightstudy.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "926621621039-7amh5fgq956go66vgvmphdkgrrbfuvgs.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.brightstudy.app",
+            "certificate_hash": "d989dfab11c6eaaf6f93d12dee9986f8329f16ff"
+          }
+        },
+        {
+          "client_id": "926621621039-b6idpq9gvm3h1gn5ltb2p609pf401aaf.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAROQkk6rGatXLXSw62tj5E5IlVVPMPTwM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "926621621039-b6idpq9gvm3h1gn5ltb2p609pf401aaf.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

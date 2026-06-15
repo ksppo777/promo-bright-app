@@ -1,0 +1,23 @@
+{
+	"appId": "com.brightstudy.app",
+	"appName": "Bright Study",
+	"webDir": "dist",
+	"bundledWebRuntime": false,
+	"plugins": {
+		"CapacitorUpdater": {
+			"autoUpdate": false
+		},
+		"CapacitorHttp": {
+			"enabled": false
+		},
+		"GoogleAuth": {
+			"scopes": [
+				"profile",
+				"email",
+				"https://www.googleapis.com/auth/drive.appdata"
+			],
+			"serverClientId": "926621621039-b6idpq9gvm3h1gn5ltb2p609pf401aaf.apps.googleusercontent.com",
+			"forceCodeForRefreshToken": true
+		}
+	}
+}
