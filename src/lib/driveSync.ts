@@ -5,11 +5,26 @@ import { Network } from '@capacitor/network';
 
 const FILE_NAME = 'BrightStudyData.json';
 
-const getDriveFileId = async (token: string): Promise<string | null> => {
-  console.log('getDriveFileId: 드라이브에서 파일 검색 시도...');
+const isTauri = () => ('__TAURI_INTERNALS__' in window);
+
+const safeFetch = async (url: string, options?: any) => {
+  if (isTauri()) {
+    try {
+      const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
+      console.log('Using Tauri native fetch for:', url);
+      return await tauriFetch(url, options);
+    } catch (e) {
+      console.log('Tauri HTTP plugin not available, falling back to standard fetch');
+    }
+  }
+  return await fetch(url, options);
+};
+
+const getDriveFileId = async (token: string, fileName: string): Promise<string | null> => {
+  console.log(`getDriveFileId: 드라이브에서 파일 검색 시도... (${fileName})`);
   try {
-    const q = encodeURIComponent(`name='${FILE_NAME}'`);
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${q}&fields=files(id)`, {
+    const q = encodeURIComponent(`name='${fileName}'`);
+    const res = await safeFetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=${q}&fields=files(id)`, {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (!res.ok) {
@@ -48,13 +63,13 @@ export const syncToDrive = async (appData: any, localTimestamp: number) => {
     }
 
     console.log('syncToDrive: 백업 대상 파일 ID 검색 시도...');
-    const fileId = await getDriveFileId(token);
+    const fileId = await getDriveFileId(token, FILE_NAME);
     let targetFileId = fileId;
 
     if (!targetFileId) {
       console.log('syncToDrive: 파일이 존재하지 않아 새로 생성합니다 (FILE_NAME).');
       // 1. Create file metadata
-      const metaRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+      const metaRes = await safeFetch('https://www.googleapis.com/drive/v3/files', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -87,7 +102,7 @@ export const syncToDrive = async (appData: any, localTimestamp: number) => {
     
     console.log('syncToDrive: 기기 데이터 업로드 시도...', { targetFileId });
     // 2. Upload file content
-    const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${targetFileId}?uploadType=media`, {
+    const res = await safeFetch(`https://www.googleapis.com/upload/drive/v3/files/${targetFileId}?uploadType=media`, {
       method: 'PATCH',
       headers: { 
         Authorization: `Bearer ${token}`,
@@ -119,11 +134,11 @@ export const getDriveSyncMetadata = async (): Promise<number | null> => {
   try {
     const token = await getAccessToken();
     if (!token) return null;
-    const fileId = await getDriveFileId(token);
+    const fileId = await getDriveFileId(token, FILE_NAME);
     if (!fileId) return null;
     
     // We can just query `fields=modifiedTime` instead of downloading the whole file!
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=modifiedTime`, {
+    const res = await safeFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=modifiedTime`, {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (!res.ok) return null;
@@ -147,7 +162,7 @@ export const syncFromDrive = async (): Promise<{ data: any, timestamp: number } 
     }
 
     console.log('syncFromDrive: 대상 파일 검색 중...');
-    const fileId = await getDriveFileId(token);
+    const fileId = await getDriveFileId(token, FILE_NAME);
     if (!fileId) {
       console.log('syncFromDrive: 대상 파일이 존재하지 않습니다.');
       appLog('INFO', 'syncFromDrive: No file found');
@@ -155,7 +170,7 @@ export const syncFromDrive = async (): Promise<{ data: any, timestamp: number } 
     }
 
     console.log(`syncFromDrive: 대상 파일 발견 (ID: ${fileId}), 다운로드 시도...`);
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+    const res = await safeFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
       headers: { Authorization: `Bearer ${token}` }
     });
     
@@ -226,6 +241,114 @@ export const autoSyncDrive = async (
      console.error('autoSyncDrive: 처리 중 에러 발생', e);
      appLog('ERROR', 'autoSyncDrive error', e.message);
      throw e;
+  }
+};
+
+const BACKUPS_FILE_NAME = 'BrightStudyBackups.json';
+
+export interface BackupSnapshot {
+  id: string;
+  timestamp: number;
+  tag: string;
+  data: any;
+}
+
+export const getDriveSnapshots = async (): Promise<BackupSnapshot[]> => {
+  const token = await getAccessToken();
+  if (!token) return [];
+  const fileId = await getDriveFileId(token, BACKUPS_FILE_NAME);
+  if (!fileId) return [];
+  try {
+    const res = await safeFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) {
+      if (res.status === 401) {
+        await logout();
+      }
+      return [];
+    }
+    const data = await res.json();
+    if (data && Array.isArray(data.snapshots)) {
+      return data.snapshots;
+    }
+  } catch (e) {
+    console.error("Failed to fetch snapshots", e);
+  }
+  return [];
+};
+
+export const createDriveSnapshot = async (appData: any, manualTag?: string) => {
+  console.log("createDriveSnapshot 시작...");
+  try {
+    const token = await getAccessToken();
+    if (!token) {
+        console.log("createDriveSnapshot: 토큰 없음");
+        return;
+    }
+    
+    let tag = manualTag || '웹';
+    if (!manualTag) {
+      if (Capacitor.isNativePlatform()) {
+        tag = '어플';
+      } else if (isTauri()) {
+        tag = 'PC';
+      }
+    }
+    
+    let fileId = await getDriveFileId(token, BACKUPS_FILE_NAME);
+    let currentSnapshots: BackupSnapshot[] = [];
+    
+    if (fileId) {
+      const res = await safeFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.snapshots)) {
+          currentSnapshots = data.snapshots;
+        }
+      } else if (res.status === 401) {
+          await logout();
+      }
+    } else {
+      const metaRes = await safeFetch('https://www.googleapis.com/drive/v3/files', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ name: BACKUPS_FILE_NAME, parents: ['appDataFolder'] })
+      });
+      if (metaRes.ok) {
+        const meta = await metaRes.json();
+        fileId = meta.id;
+      }
+    }
+    
+    if (!fileId) return;
+
+    const newSnapshot: BackupSnapshot = {
+      id: Date.now().toString(),
+      timestamp: Date.now(),
+      tag,
+      data: appData
+    };
+    
+    currentSnapshots.unshift(newSnapshot);
+    currentSnapshots = currentSnapshots.slice(0, 5); // Keep max 5
+    
+    await safeFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+      method: 'PATCH',
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ snapshots: currentSnapshots })
+    });
+    console.log("createDriveSnapshot: 완료", tag, currentSnapshots.length);
+  } catch(e) {
+     console.error("createDriveSnapshot 에러", e);
   }
 };
 
