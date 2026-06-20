@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Play, Pause, RefreshCw, Coffee, Brain, Settings2, Target, Square, MoreVertical, X, Pencil, Trash2 } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { Play, Pause, RefreshCw, Coffee, Brain, Settings2, Target, Square, MoreVertical, X, Pencil, Trash2, Info } from 'lucide-react';
+import { cn, useLockBodyScroll } from '../lib/utils';
 import { StudySession } from '../types';
 import { isSameDay, parseISO } from 'date-fns';
 import { registerBackHandler } from '../lib/backHandler';
+import AlertGuideModal from './AlertGuideModal';
 
 let capacitorNotifications: any = null;
 import("../lib/capacitor-notifications").then((m) => {
@@ -44,6 +45,7 @@ export default function PomodoroTimer({ onSessionComplete, sessions, timerProps,
   const [editSeconds, setEditSeconds] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isRecordsExpanded, setIsRecordsExpanded] = useState(false);
+  const [showAlertGuide, setShowAlertGuide] = useState(false);
   const [syncConfirmData, setSyncConfirmData] = useState<{
      targetDateStr: string;
      startTimeStr: string;
@@ -51,6 +53,8 @@ export default function PomodoroTimer({ onSessionComplete, sessions, timerProps,
      chapterId: string;
      confirmMsg: string;
   } | null>(null);
+
+  useLockBodyScroll(editModalOpen || syncConfirmData !== null || showAlertGuide);
 
   useEffect(() => {
     if (editModalOpen) {
@@ -227,6 +231,7 @@ export default function PomodoroTimer({ onSessionComplete, sessions, timerProps,
 
   return (
     <div className="flex flex-col lg:flex-row gap-6 w-full max-w-5xl mx-auto transition-colors">
+      {showAlertGuide && <AlertGuideModal onClose={() => setShowAlertGuide(false)} />}
       
       {/* Left Panel - Today's Record */}
       <div className="lg:w-1/4 bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-xl shadow-blue-900/5 dark:shadow-none border border-blue-50 dark:border-slate-700 flex flex-col lg:min-h-[400px]">
@@ -351,22 +356,31 @@ export default function PomodoroTimer({ onSessionComplete, sessions, timerProps,
         </div>
 
         {/* Alert Mode Selection */}
-        <div className="flex gap-2 w-full max-w-sm mb-6 bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-2xl border border-slate-100 dark:border-slate-700/50">
-          {(['sound', 'vibrate', 'both', 'off'] as const).map(m => (
-            <button
-              key={m}
-              onClick={() => setTimerAlertMode(m)}
-              className={cn(
-               "flex-1 py-1.5 text-xs font-bold rounded-xl transition-all capitalize",
-               timerAlertMode === m ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-              )}
-            >
-              {m === 'sound' && t('pomodoro.soundOnly')}
-              {m === 'vibrate' && t('pomodoro.vibrateOnly')}
-              {m === 'both' && t('pomodoro.soundAndVibrate')}
-              {m === 'off' && t('pomodoro.screenOnly')}
-            </button>
-          ))}
+        <div className="flex bg-slate-50 dark:bg-slate-900/50 p-1.5 rounded-2xl border border-slate-100 dark:border-slate-700/50 w-full max-w-sm mb-6 items-center">
+          <div className="flex gap-2 w-full">
+            {(['sound', 'vibrate', 'both', 'off'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => setTimerAlertMode(m)}
+                className={cn(
+                 "flex-1 py-1.5 text-[11px] sm:text-xs font-bold rounded-xl transition-all capitalize",
+                 timerAlertMode === m ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                )}
+              >
+                {m === 'sound' && t('pomodoro.soundOnly')}
+                {m === 'vibrate' && t('pomodoro.vibrateOnly')}
+                {m === 'both' && t('pomodoro.soundAndVibrate')}
+                {m === 'off' && t('pomodoro.screenOnly')}
+              </button>
+            ))}
+          </div>
+          <button 
+            onClick={() => setShowAlertGuide(true)}
+            className="p-1.5 ml-1 text-slate-400 hover:text-indigo-500 transition-colors"
+            title={t('alertGuide.title')}
+          >
+            <Info className="w-5 h-5" />
+          </button>
         </div>
 
         <div className="flex gap-2 p-1.5 mb-8 bg-blue-50/80 dark:bg-slate-900/80 rounded-full border border-blue-100 dark:border-slate-700">
@@ -566,8 +580,14 @@ export default function PomodoroTimer({ onSessionComplete, sessions, timerProps,
 
       {/* Edit Session Modal */}
       {editModalOpen && sessionToEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 dark:bg-slate-900/80 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-2xl w-full max-w-sm border border-blue-50 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-200">
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 dark:bg-slate-900/80 backdrop-blur-sm"
+          onClick={() => setEditModalOpen(false)}
+        >
+          <div 
+            className="bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-2xl w-full max-w-sm border border-blue-50 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-black text-blue-900 dark:text-slate-100 flex items-center gap-2">
                 <Pencil className="w-5 h-5 text-blue-500" /> {t('pomodoro.editRecord')}
@@ -650,8 +670,14 @@ export default function PomodoroTimer({ onSessionComplete, sessions, timerProps,
 
       {/* Sync Confirm Modal */}
       {syncConfirmData && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 dark:bg-slate-900/80 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-2xl w-full max-w-sm border border-blue-50 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-200">
+        <div 
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 dark:bg-slate-900/80 backdrop-blur-sm"
+          onClick={() => setSyncConfirmData(null)}
+        >
+          <div 
+            className="bg-white dark:bg-slate-800 rounded-3xl p-6 shadow-2xl w-full max-w-sm border border-blue-50 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
             <h3 className="text-lg font-black text-blue-900 dark:text-slate-100 mb-4 flex items-center gap-2">
               <RefreshCw className="w-5 h-5 text-indigo-500" /> {t('pomodoro.autoSyncTitle')}
             </h3>

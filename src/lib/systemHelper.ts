@@ -1,14 +1,28 @@
-import { registerPlugin } from '@capacitor/core';
+import { registerPlugin } from "@capacitor/core";
 
 export interface SystemHelperPlugin {
-  startForegroundService(options: { title: string; text: string }): Promise<void>;
-  updateForegroundService(options: { text: string }): Promise<void>;
+  startForegroundService(options: {
+    title: string;
+    text: string;
+    endTime?: number;
+    endTimeStr?: string;
+  }): Promise<void>;
+  updateForegroundService(options: { text: string; endTime?: number; endTimeStr?: string }): Promise<void>;
   stopForegroundService(): Promise<void>;
   bringToFront(): Promise<void>;
-  checkPermissions(): Promise<{ overlay: boolean; exactAlarm: boolean }>;
+  checkPermissions(): Promise<{
+    overlay: boolean;
+    exactAlarm: boolean;
+    batteryOptimization: boolean;
+  }>;
   requestOverlayPermission(): Promise<void>;
   requestExactAlarmPermission(): Promise<void>;
+  requestBatteryOptimizationPermission(): Promise<void>;
+  acquireWakelock(): Promise<void>;
+  releaseWakelock(): Promise<void>;
+  vibrate(): Promise<void>;
+  getLogcat(): Promise<{ logcat: string }>;
+  saveLogToDownloads(options: { data: string; fileName: string }): Promise<{ path: string }>;
 }
 
-export const SystemHelper = registerPlugin<SystemHelperPlugin>('SystemHelper');
-
+export const SystemHelper = registerPlugin<SystemHelperPlugin>("SystemHelper");

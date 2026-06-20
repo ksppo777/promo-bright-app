@@ -5,7 +5,7 @@ import { Network } from '@capacitor/network';
 
 const FILE_NAME = 'BrightStudyData.json';
 
-const isTauri = () => ('__TAURI_INTERNALS__' in window);
+const isTauri = () => (typeof window !== 'undefined' && ('__TAURI__' in window || '__TAURI_INTERNALS__' in window));
 
 const safeFetch = async (url: string, options?: any) => {
   if (isTauri()) {

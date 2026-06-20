@@ -1,4 +1,13 @@
 {
+  "calculationBasis": "計算基準",
+  "basisPage": "ページ",
+  "basisChapter": "チャプター数",
+  "chaptersPerDay": "チャプター / 日",
+  "chapterPrefix": "プレフィックス",
+  "prefixNone": "なし",
+  "prefixSequential": "連番 (1, 2...)",
+  "prefixReverse": "逆順 (N, N-1...)",
+  "prefixCustom": "カスタム",
   "nav": {
     "home": "ホーム",
     "plan": "今日の計画",
@@ -12,6 +21,7 @@
   "common": {
     "save": "保存",
     "cancel": "キャンセル",
+    "confirm": "確認",
     "delete": "削除",
     "add": "追加",
     "edit": "編集",
@@ -23,8 +33,12 @@
     "second": "秒",
     "none": "なし",
     "done": "完了",
-    "close": "閉じる"
+    "close": "閉じる",
+    "enabled": "有効",
+    "disabled": "無効"
   },
+  "allAutoGoals": "自動目標リスト",
+  "chapterCount": "{{count}}チャプター",
   "languageSelection": {
     "title": "言語の選択",
     "subtitle": "Select Language / 言語の選択",
@@ -65,7 +79,9 @@
       "quotePlaceholder": "自分の名言を入力してください...",
       "refresh": "更新",
       "editPin": "編集(固定)",
-      "goalWithCount": "目標: {{count}}回"
+      "goalWithCount": "目標: {{count}}回",
+      "completeGoalConfirmation": "今日の挑戦を完了しますか？",
+      "undoGoalConfirmation": "挑戦の完了を取り消しますか？"
       ,
       "studyStatusTitle": "今日の学習状況",
       "settings": "設定",
@@ -225,6 +241,9 @@
   "todayPlan": {
     "title": "今日の学習計画",
     "subtitle": "タイムテーブルを設定して目標を記入しましょう。",
+    "planAhead": "事前計画",
+    "planAheadDateLabel": "計画する日付を選択",
+    "planAheadWarning": "今日の日付は「今日の計画」タブで直接計画してください。",
     "dailyGoalLabel": "1日の学習目標",
     "hoursLabel": "時間",
     "minutesLabel": "分",
@@ -314,6 +333,7 @@
   }
 
   ,"settings": {
+    "notice": { "title": "お知らせ", "desc": "アップデート履歴や重要なお知らせをご確認ください。" },
     "display": { "title": "表示と環境設定" },
     "language": { "title": "言語設定", "desc": "アプリで使用する言語を選択してください。", "ko": "한국어", "en": "English", "ja": "日本語" },
     "theme": { "title": "テーマ", "desc": "目に優しいテーマに切り替えます。", "light": "ライト", "dark": "ダーク" },
@@ -343,17 +363,48 @@
       "remoteData": "Googleクラウドバックアップ (最新)",
       "checking": "確認中...",
       "networkTitle": "バックアップ/同期に使用するネットワーク",
-      "network": { "all": "Wi-Fiとモバイルデータ", "wifi_only": "Wi-Fiのみ (モバイルデータ節約)" }
+      "network": { "all": "Wi-Fiとモバイルデータ", "wifi_only": "Wi-Fiのみ (モバイルデータ節約)" },
+      "snapshotsTitle": "バックアップスナップショット",
+      "snapshotsLoading": "データを読み込み中...",
+      "snapshotsEmpty": "保存されたスナップショットはありません。",
+      "snapshotRestore": "復元",
+      "snapshotRestoreConfirm": "選択したスナップショットでデータを復元しますか？現在のデバイスのデータが上書きされます。",
+      "snapshotRestoreComplete": "スナップショット復元完了",
+      "resetData": "初期化 (リロード)"
     },
 
     "localSave": { "title": "デバイスに保存", "desc": "オフラインでもデータを安全に保持します。", "saveButton": "手動保存", "saved": "すべてのデータがデバイスに安全に保存されました！", "saveFailed": "手動保存に失敗しました。後でもう一度お試しください。", "manualSaveError": "手動保存に失敗しました" },
 
     "advanced": { "title": "高度な設定とサポート" },
+    "version": { "title": "現在のアプリバージョン", "desc": "ビルド & リリース情報" },
     "support": { "title": "サポート(1:1)", "desc": "エラーやフィードバックをDiscordで送信できます。", "contact": "お問い合わせ", "modalTitle": "サポート", "modalDesc": "バグ報告や改善提案は下のコミュニティへ送ってください。", "discord": "Discordチャンネルを開く" },
 
-    "devLogs": { "title": "デバッグログモード", "desc": "開発者のエラー解析のために動作ログを保存します。", "enabled": "ログモードが有効になりました。", "disabled": "ログモードが無効になりました。", "confirmDelete": "記録されたログをすべて削除しますか？", "deleted": "ログを削除しました。", "clear": "ログを削除", "export": "ログをエクスポート (.json)" },
+    "devLogs": { "title": "デバッグログモード", "desc": "開発者のエラー解析のために動作ログを保存します。", "enabled": "ログモードが有効になりました。", "disabled": "ログモードが無効になりました。", "confirmDelete": "記録されたログをすべて削除しますか？", "deleted": "ログを削除しました。", "clear": "ログを削除", "export": "ログを送信", "copiedToClipboard": "クリップボードに一部コピーされました" },
 
     "factory": { "title": "アプリデータの初期化", "desc": "このデバイスに保存されているアプリ関連データを完全に消去します。", "resetButton": "初期化設定", "confirmTitle": "本当に削除しますか？", "confirmDesc": "削除されたデータは復元できません。クラウドにバックアップを取っている場合は復元できます。" }
+  },
+  "permissions": {
+    "overlay": { "title": "他のアプリの上に表示", "desc": "タイマー終了時にすぐに画面を起動し、オーバーレイ情報を表示するための必須権限です。" },
+    "exactAlarm": { "title": "正確なアラーム", "desc": "スリープ中などでも、設定したアラームが正確に開始・終了するようにします。" },
+    "battery": { "title": "バッテリー最適化の無効化", "desc": "バックグラウンドでシステムによるタイマーの強制終了を防ぎます。" },
+    "notifications": { "title": "通知の設定", "desc": "タイマーの進行状況をバーに表示し、休憩時間などをプッシュ通知で知らせます。" },
+    "grantedTitle": "権限が許可されました",
+    "grantedDesc": "権限の設定が完了しました。",
+    "btnGranted": "確認完了",
+    "btnRequest": "権限を許可する",
+    "footer": "デバイスの設定画面で許可ボタンを押してください。"
+  },
+  "alertGuide": {
+    "title": "通知設定ガイド",
+    "intro": "アラームの音とバイブレーションは、スマートフォンの<strong>システム設定</strong>が優先されます。",
+    "soundTitle": "🔔 音声のみ / 音声+バイブ",
+    "soundDesc": "デバイスが「マナーモード」や「サイレント」の場合、音が鳴らないことがあります。メディアの音量を確認してください。",
+    "vibrateTitle": "📳 バイブレーションのみ",
+    "vibrateDesc": "デバイスが「サイレントモード」の場合、またはバイブレーションの強度が0の場合、機能しません。",
+    "screenTitle": "📱 画面通知のみ",
+    "screenDesc": "音やバイブレーションなしで画面にのみ通知が表示されます。静かな図書館などで便利です。",
+    "outro": "このアプリはユーザーの設定を尊重し、マナーモードを無効にして強制的に音を鳴らすことはありません。",
+    "confirm": "確認して起動する"
   },
   "statistics": {
     "streakTitle": "🔥 連続学習日数",

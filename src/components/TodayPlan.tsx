@@ -1,11 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { format } from 'date-fns';
-import { Target, Book as BookIcon, Clock, Plus, Trash2, X, CalendarDays, RotateCcw, Divide, MoreVertical, Edit2 } from 'lucide-react';
+import { format, addDays } from 'date-fns';
+import { Target, Book as BookIcon, Clock, Plus, Trash2, X, CalendarDays, RotateCcw, Divide, MoreVertical, Edit2, List, Check } from 'lucide-react';
 import { Book, Chapter } from '../types';
-import { useLocalStorage, cn } from '../lib/utils';
+import { useLocalStorage, cn, useLockBodyScroll } from '../lib/utils';
+import BaseModal from './BaseModal';
 import { motion, AnimatePresence } from 'motion/react';
 import { registerBackHandler } from '../lib/backHandler';
+
+import { AutoGoalModal } from './AutoGoalModal';
+import { AllAutoGoalsModal } from './AllAutoGoalsModal';
 
 interface TodayPlanProps {
   dailyGoalMinutes: number;
@@ -13,6 +17,7 @@ interface TodayPlanProps {
   weeklyPlans: Record<string, string>;
   setWeeklyPlans: (val: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => void;
   books: Book[];
+  setBooks: (books: Book[] | ((prev: Book[]) => Book[])) => void;
   setActiveTab: (tab: any) => void;
   autoGoalDisplayMode: 'multiple' | 'single';
   dateStr?: string;
@@ -29,6 +34,7 @@ export interface TimeSlotGoal {
   memo: string;
   isAutoSynced?: boolean;
   isManualAdded?: boolean;
+  isCompleted?: boolean;
 }
 
 export interface TimeBlock {
@@ -38,10 +44,58 @@ export interface TimeBlock {
   duration: number;
 }
 
-export default function TodayPlan({ dailyGoalMinutes, setDailyGoalMinutes, setWeeklyPlans, books, setActiveTab, autoGoalDisplayMode, dateStr }: TodayPlanProps) {
+export default function TodayPlan({ dailyGoalMinutes, setDailyGoalMinutes, weeklyPlans, setWeeklyPlans, books, setBooks, setActiveTab, autoGoalDisplayMode, dateStr }: TodayPlanProps) {
   const { t } = useTranslation();
+  const [editingAg, setEditingAg] = useState<{book: Book, goalId: string} | null>(null);
   const targetDateStr = dateStr || format(new Date(), 'yyyy-MM-dd');
   const isToday = targetDateStr === format(new Date(), 'yyyy-MM-dd');
+
+  const [showPlanAheadModal, setShowPlanAheadModal] = useState(false);
+  const [planAheadDate, setPlanAheadDate] = useState(format(addDays(new Date(), 1), 'yyyy-MM-dd'));
+
+  const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
+  const [editingBlockLabel, setEditingBlockLabel] = useState("");
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showAllAutoGoalsModal, setShowAllAutoGoalsModal] = useState(false);
+  const [confirmCompleteAg, setConfirmCompleteAg] = useState<{book: Book, autoGoal: import('../types').AutoGoal} | null>(null);
+
+  const todayAutoGoals = books.flatMap(b => 
+    (b.autoGoals?.filter(ag => 
+      ag.enabled && targetDateStr >= ag.startDate && targetDateStr <= ag.endDate
+    ) || []).map(ag => ({ book: b, autoGoal: ag }))
+  );
+
+  const toggleAutoGoalComplete = (bookId: string, goalId: string) => {
+    setBooks(prev => prev.map(b => {
+      if (b.id !== bookId) return b;
+      return {
+        ...b,
+        autoGoals: b.autoGoals?.map(ag => {
+          if (ag.id !== goalId) return ag;
+          const completed = ag.completedDates || [];
+          const isCompleted = completed.includes(targetDateStr);
+          return {
+            ...ag,
+            completedDates: isCompleted 
+              ? completed.filter(d => d !== targetDateStr)
+              : [...completed, targetDateStr]
+          };
+        })
+      };
+    }));
+    setConfirmCompleteAg(null);
+  };
+
+  useLockBodyScroll(showPlanAheadModal || editingBlockId !== null || showResetConfirm);
+
+  useEffect(() => {
+    if (showPlanAheadModal) {
+      return registerBackHandler(() => {
+        setShowPlanAheadModal(false);
+        return true;
+      });
+    }
+  }, [showPlanAheadModal]);
 
   const [timetableRecords, setTimetableRecords] = useLocalStorage<Record<string, TimeSlotGoal[]>>('study-timetable-records', {});
   
@@ -73,10 +127,6 @@ export default function TodayPlan({ dailyGoalMinutes, setDailyGoalMinutes, setWe
   const sleepTime = typeof sleepTimeRaw === 'number' ? `${String(sleepTimeRaw).padStart(2, '0')}:00` : sleepTimeRaw;
 
   const [dailyLayouts, setDailyLayouts] = useLocalStorage<Record<string, TimeBlock[]>>('study-timetable-layouts', {});
-
-  const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
-  const [editingBlockLabel, setEditingBlockLabel] = useState<string>('');
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
   
   // Goal Form State
   const [selectedBookId, setSelectedBookId] = useState('');
@@ -347,6 +397,21 @@ export default function TodayPlan({ dailyGoalMinutes, setDailyGoalMinutes, setWe
     });
   };
 
+  const handleToggleGoalComplete = (blockId: string) => {
+    setTimetableRecords(prev => {
+      const records = prev[targetDateStr] || [];
+      return {
+        ...prev,
+        [targetDateStr]: records.map(g => {
+          if (g.blockId === blockId || (g.hour !== undefined && `${String(g.hour).padStart(2, '0')}:00` === blockId)) {
+            return { ...g, isCompleted: !g.isCompleted };
+          }
+          return g;
+        })
+      };
+    });
+  };
+
   const openEditModal = (blockId: string, label: string) => {
     const existing = todayGoals.find(g => g.blockId === blockId || (g.hour !== undefined && `${String(g.hour).padStart(2, '0')}:00` === blockId));
     if (existing) {
@@ -367,24 +432,215 @@ export default function TodayPlan({ dailyGoalMinutes, setDailyGoalMinutes, setWe
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-8 animate-in fade-in zoom-in-95 duration-300 transition-colors">
-      <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700/50">
-        <div className="flex items-center gap-3 mb-8">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-500">
-            <Target className="w-6 h-6" />
+    <>
+      <AnimatePresence>
+        {showPlanAheadModal && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.98 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-50 flex flex-col pt-16 pb-4 px-4 bg-slate-50 dark:bg-slate-900 overflow-y-auto"
+            onClick={() => setShowPlanAheadModal(false)}
+          >
+            <button 
+              onClick={() => setShowPlanAheadModal(false)} 
+              className="fixed top-4 right-4 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors bg-white dark:bg-slate-800 rounded-full shadow-md z-50"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <div 
+              className="w-full max-w-4xl mx-auto flex flex-col gap-6 relative z-10 mb-8 pt-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex flex-col sm:flex-row items-center gap-4 bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
+                <span className="text-lg font-bold text-slate-700 dark:text-slate-200">{t('todayPlan.planAheadDateLabel')}</span>
+                <input 
+                  type="date" 
+                  value={planAheadDate} 
+                  onChange={(e) => setPlanAheadDate(e.target.value)} 
+                  className="px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+              
+              <div className={cn("transition-opacity relative", planAheadDate === format(new Date(), 'yyyy-MM-dd') ? "opacity-50 pointer-events-none" : "opacity-100")}>
+                {planAheadDate === format(new Date(), 'yyyy-MM-dd') && (
+                  <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
+                    <div className="bg-slate-900/80 text-white font-bold px-6 py-3 rounded-2xl">{t('todayPlan.planAheadWarning')}</div>
+                  </div>
+                )}
+                <TodayPlan 
+                  dailyGoalMinutes={dailyGoalMinutes} 
+                  setDailyGoalMinutes={setDailyGoalMinutes} 
+                  weeklyPlans={weeklyPlans} 
+                  setWeeklyPlans={setWeeklyPlans} 
+                  books={books} 
+                  setBooks={setBooks}
+                  setActiveTab={setActiveTab} 
+                  autoGoalDisplayMode={autoGoalDisplayMode} 
+                  dateStr={planAheadDate} 
+                />
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="w-full max-w-4xl mx-auto space-y-8 animate-in fade-in zoom-in-95 duration-300 transition-colors">
+        <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700/50">
+        <div className="flex items-center justify-between gap-3 mb-8">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-500">
+              <Target className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-2xl font-bold text-slate-800 dark:text-white mb-1">{t('todayPlan.title')}</h3>
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{t('todayPlan.subtitle')}</p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-2xl font-bold text-slate-800 dark:text-white mb-1">{t('todayPlan.title')}</h3>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{t('todayPlan.subtitle')}</p>
-          </div>
+          
+          {!dateStr && (
+            <button 
+              onClick={() => setShowPlanAheadModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-indigo-600 dark:text-indigo-400 text-sm font-bold rounded-xl border border-indigo-200 dark:border-indigo-500/30 transition-colors shadow-sm shrink-0"
+            >
+              <CalendarDays className="w-4 h-4" />
+              {t('todayPlan.planAhead')}
+            </button>
+          )}
         </div>
 
-        <div className="space-y-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 block">{t('todayPlan.dailyGoalLabel')}</label>
-              <div className="flex items-center gap-1.5 sm:gap-4 w-full">
-                <div className="flex items-center gap-1 sm:gap-2 shrink-1">
+        <div className="space-y-6">
+          {todayAutoGoals.length > 0 && (
+            <div className="flex flex-col gap-3">
+              {autoGoalDisplayMode === 'single' ? (
+                <div className="relative overflow-hidden bg-gradient-to-tr from-red-500 via-rose-500 to-orange-500 shadow-sm shadow-red-500/20 rounded-3xl p-5 sm:p-6 text-white w-full">
+                  {/* Decorative Blur Blobs */}
+                  <div className="absolute top-0 right-0 w-48 h-48 bg-orange-400 blur-[80px] opacity-60 rounded-full mix-blend-screen pointer-events-none"></div>
+                  <div className="absolute bottom-0 left-0 w-48 h-48 bg-red-600 blur-[80px] opacity-60 rounded-full mix-blend-screen pointer-events-none"></div>
+                  
+                  <div className="font-bold text-red-100 uppercase tracking-widest mb-4 flex items-center justify-between opacity-90 text-[11px] sm:text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <Target className="w-4 h-4 text-orange-200" /> {t('todayPlan.dailyChallengeTitle')}
+                    </div>
+                    <button
+                      onClick={() => setShowAllAutoGoalsModal(true)}
+                      className="bg-white/10 hover:bg-white/20 transition-colors p-1.5 rounded-lg cursor-pointer shrink-0"
+                      title={t('allAutoGoals', '자동 목표 리스트') || "자동 목표 리스트"}
+                    >
+                      <List className="w-4 h-4 text-white" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 relative z-10 w-full">
+                    {todayAutoGoals.map(({book, autoGoal}) => {
+                      const isCompleted = autoGoal.completedDates?.includes(targetDateStr);
+                      return (
+                      <div 
+                        key={`${book.id}-${autoGoal.id}`} 
+                        className="flex flex-col bg-black/25 hover:bg-black/40 backdrop-blur-sm shadow-inner transition-colors rounded-2xl p-4 border border-white/10 relative z-10 w-full overflow-hidden cursor-pointer group"
+                        onClick={() => setConfirmCompleteAg({ book, autoGoal })}
+                      >
+                        {isCompleted && (
+                          <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none bg-black/20">
+                            <div className="animate-stamp border-4 border-emerald-400 text-emerald-400 rounded-lg px-4 py-1 text-2xl font-black shadow-[0_0_15px_rgba(52,211,153,0.5)] bg-black/40 backdrop-blur-sm">
+                              DONE
+                            </div>
+                          </div>
+                        )}
+                        <div className={cn("flex flex-col w-full transition-opacity h-full", isCompleted ? "opacity-40" : "")}>
+                          <div className="flex justify-between items-start mb-2 w-full">
+                            <span className="font-bold text-xs sm:text-sm truncate pr-2 w-full" title={book.title}>{book.title}</span>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); setEditingAg({ book, goalId: autoGoal.id }); }}
+                              className="bg-white/10 hover:bg-white/20 transition-colors p-1.5 rounded-lg cursor-pointer shrink-0"
+                              title={t('common.edit') || "수정"}
+                            >
+                              <Edit2 className="w-3.5 h-3.5 text-white" />
+                            </button>
+                          </div>
+                          <div className="flex items-baseline gap-1.5 w-full">
+                            <span className="text-2xl sm:text-3xl font-black tracking-tight">{autoGoal.dailyPages}</span>
+                            <span className="text-[10px] sm:text-xs font-bold text-red-100 whitespace-nowrap">
+                              {autoGoal.calculationBasis === 'chapter' ? (t('chaptersPerDay') || "챕터 / 일") : t('todayPlan.pagesPerDay')}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="col-span-full flex justify-between items-center px-1">
+                    <div className="font-bold text-slate-700 dark:text-slate-300 uppercase tracking-widest flex items-center gap-1.5 text-[11px] sm:text-xs">
+                      <Target className="w-4 h-4 text-orange-500" /> {t('todayPlan.dailyChallengeTitle')}
+                    </div>
+                    <button
+                      onClick={() => setShowAllAutoGoalsModal(true)}
+                      className="text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                      title={t('allAutoGoals', '자동 목표 리스트') || "자동 목표 리스트"}
+                    >
+                      <List className="w-4 h-4" />
+                    </button>
+                  </div>
+                  {todayAutoGoals.map(({book, autoGoal}) => {
+                    const isCompleted = autoGoal.completedDates?.includes(targetDateStr);
+                    return (
+                    <div 
+                      key={`${book.id}-${autoGoal.id}`} 
+                      className="relative overflow-hidden bg-gradient-to-tr from-red-500 via-rose-500 to-orange-500 p-5 rounded-3xl text-white flex justify-between items-center shadow-md shadow-red-500/10 group cursor-pointer hover:shadow-lg transition-transform"
+                      onClick={() => setConfirmCompleteAg({ book, autoGoal })}
+                    >
+                      {/* Decorative Blur Blobs */}
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-orange-400 blur-3xl opacity-50 rounded-full mix-blend-screen pointer-events-none transition-transform group-hover:scale-110"></div>
+                      <div className="absolute bottom-0 left-0 w-32 h-32 bg-red-600 blur-3xl opacity-50 rounded-full mix-blend-screen pointer-events-none transition-transform group-hover:scale-110"></div>
+                      
+                      {isCompleted && (
+                        <div className="absolute inset-0 flex items-center xl:justify-center justify-end pr-10 z-20 pointer-events-none bg-black/20">
+                          <div className="animate-stamp border-4 border-emerald-400 text-emerald-400 rounded-lg px-6 py-2 text-3xl font-black shadow-[0_0_20px_rgba(52,211,153,0.5)] bg-black/40 backdrop-blur-sm">
+                            DONE
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className={cn("flex flex-col relative z-10 transition-opacity", isCompleted ? "opacity-50" : "")}>
+                        <span className="text-[10px] font-bold text-red-100 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                          <Target className="w-3.5 h-3.5 text-orange-200" /> {t('todayPlan.dailyChallengeTitle')}
+                        </span>
+                        <span className="font-bold text-sm truncate max-w-[200px] sm:max-w-[250px] mb-2">{book.title}</span>
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-3xl font-black tracking-tight">{autoGoal.dailyPages}</span>
+                          <span className="text-xs font-bold text-red-100">
+                            {autoGoal.calculationBasis === 'chapter' ? (t('chaptersPerDay') || "챕터 / 일") : t('todayPlan.pagesPerDay')}
+                          </span>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setEditingAg({ book, goalId: autoGoal.id }); }}
+                        className={cn("relative z-10 bg-white/20 hover:bg-white/30 transition-colors p-3.5 rounded-full cursor-pointer shrink-0 hidden sm:flex", isCompleted ? "opacity-50 pointer-events-none" : "")}
+                        title={t('common.edit') || "수정"}
+                      >
+                        <Edit2 className="w-6 h-6 text-white" />
+                      </button>
+                    </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+            {/* Daily Goal Setting */}
+            <div className="bg-slate-50/50 dark:bg-slate-900/20 p-5 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <label className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
+                <Target className="w-4 h-4 text-indigo-500" />
+                {t('todayPlan.dailyGoalLabel')}
+              </label>
+              <div className="flex items-center gap-2 sm:gap-4 w-full">
+                <div className="flex items-center gap-2 shrink-1 bg-white dark:bg-slate-800 p-2 rounded-xl border border-slate-200 dark:border-slate-700 w-full sm:w-auto shadow-sm">
                   <input
                     type="number"
                     min="0"
@@ -396,11 +652,13 @@ export default function TodayPlan({ dailyGoalMinutes, setDailyGoalMinutes, setWe
                         setDailyGoalMinutes(h * 60 + (dailyGoalMinutes % 60));
                       }
                     }}
-                    className="w-12 sm:w-20 px-1 sm:px-3 py-2 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-lg font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-center"
+                    className="w-14 sm:w-20 bg-transparent text-lg font-black text-slate-900 dark:text-white focus:outline-none focus:ring-0 text-center"
+                    placeholder="0"
                   />
-                  <span className="text-slate-500 font-bold whitespace-nowrap text-xs sm:text-base">{t('todayPlan.hoursLabel')}</span>
+                  <span className="text-slate-500 font-bold whitespace-nowrap text-sm pr-2">{t('todayPlan.hoursLabel')}</span>
                 </div>
-                <div className="flex items-center gap-1 sm:gap-2 shrink-1">
+                <span className="text-slate-400 font-bold">:</span>
+                <div className="flex items-center gap-2 shrink-1 bg-white dark:bg-slate-800 p-2 rounded-xl border border-slate-200 dark:border-slate-700 w-full sm:w-auto shadow-sm">
                   <input
                     type="number"
                     min="0"
@@ -412,108 +670,49 @@ export default function TodayPlan({ dailyGoalMinutes, setDailyGoalMinutes, setWe
                         setDailyGoalMinutes(Math.floor(dailyGoalMinutes / 60) * 60 + m);
                       }
                     }}
-                    className="w-12 sm:w-20 px-1 sm:px-3 py-2 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl text-base sm:text-lg font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-center"
+                    className="w-14 sm:w-20 bg-transparent text-lg font-black text-slate-900 dark:text-white focus:outline-none focus:ring-0 text-center"
+                    placeholder="0"
                   />
-                  <span className="text-slate-500 font-bold whitespace-nowrap text-xs sm:text-base">{t('todayPlan.minutesLabel')}</span>
+                  <span className="text-slate-500 font-bold whitespace-nowrap text-sm pr-2">{t('todayPlan.minutesLabel')}</span>
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-col gap-4">
-              {books.some(b => b.autoGoals?.some(ag => ag.enabled)) && (
-                <div className="flex flex-col gap-3">
-                  {autoGoalDisplayMode === 'single' ? (
-                    <div className="relative overflow-hidden bg-gradient-to-br from-red-500 via-rose-500 to-orange-500 shadow-sm shadow-red-500/20 rounded-2xl p-4 text-white flex flex-col gap-4">
-                      {/* Decorative Blur Blobs */}
-                      <div className="absolute top-0 right-0 w-24 h-24 bg-orange-400 blur-2xl opacity-50 rounded-full mix-blend-screen pointer-events-none"></div>
-                      <div className="absolute bottom-0 left-0 w-24 h-24 bg-red-600 blur-2xl opacity-50 rounded-full mix-blend-screen pointer-events-none"></div>
-                      
-                      {books.flatMap(b => (b.autoGoals?.filter(ag => ag.enabled) || []).map(ag => ({ book: b, autoGoal: ag }))).map(({book, autoGoal}, idx) => (
-                        <div key={autoGoal.id} className={cn("flex justify-between items-center relative z-10", idx > 0 ? "pt-4 border-t border-white/20" : "")}>
-                          <div className="flex flex-col">
-                            <span className="text-[10px] font-bold text-red-100 uppercase tracking-widest mb-0.5 flex items-center gap-1">
-                              <Target className="w-3 h-3 text-orange-200" /> {t('todayPlan.dailyChallengeTitle')}
-                            </span>
-                            <span className="font-bold text-sm truncate max-w-[150px] mb-1">{book.title}</span>
-                            <div className="flex items-baseline gap-1">
-                              <span className="text-2xl font-black tracking-tight">{autoGoal.dailyPages}</span>
-                              <span className="text-xs font-bold text-red-100">{t('todayPlan.pagesPerDay')}</span>
-                            </div>
-                          </div>
-                          <button 
-                            onClick={() => setActiveTab('books')}
-                            className="bg-white/10 hover:bg-white/20 transition-colors p-2.5 rounded-xl cursor-pointer self-start shrink-0"
-                            title={t('todayPlan.goToProgressManagement')}
-                          >
-                            <BookIcon className="w-4 h-4 text-white" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    books.flatMap(b => (b.autoGoals?.filter(ag => ag.enabled) || []).map(ag => ({ book: b, autoGoal: ag }))).map(({book, autoGoal}) => (
-                      <div key={autoGoal.id} className="relative overflow-hidden bg-gradient-to-br from-red-500 via-rose-500 to-orange-500 p-4 rounded-2xl text-white flex justify-between items-center shadow-sm group">
-                        {/* Decorative Blur Blobs */}
-                        <div className="absolute top-0 right-0 w-24 h-24 bg-orange-400 blur-2xl opacity-50 rounded-full mix-blend-screen pointer-events-none transition-transform group-hover:scale-110"></div>
-                        <div className="absolute bottom-0 left-0 w-24 h-24 bg-red-600 blur-2xl opacity-50 rounded-full mix-blend-screen pointer-events-none transition-transform group-hover:scale-110"></div>
-                        
-                        <div className="flex flex-col relative z-10">
-                          <span className="text-[10px] font-bold text-red-100 uppercase tracking-widest mb-0.5 flex items-center gap-1">
-                            <Target className="w-3 h-3 text-orange-200" /> {t('todayPlan.dailyChallengeTitle')}
-                          </span>
-                          <span className="font-bold text-sm truncate max-w-[150px] mb-1">{book.title}</span>
-                          <div className="flex items-baseline gap-1">
-                            <span className="text-2xl font-black tracking-tight">{autoGoal.dailyPages}</span>
-                            <span className="text-xs font-bold text-red-100">{t('todayPlan.pagesPerDay')}</span>
-                          </div>
-                        </div>
-                        <button 
-                          onClick={() => setActiveTab('books')}
-                          className="relative z-10 bg-white/20 hover:bg-white/30 transition-colors p-2.5 rounded-xl cursor-pointer"
-                          title={t('todayPlan.goToProgressManagement')}
-                        >
-                          <BookIcon className="w-5 h-5 text-white" />
-                        </button>
-                      </div>
-                    ))
-                  )}
+            {/* Life Style Pattern */}
+            <div className="flex flex-col gap-4 bg-slate-50/50 dark:bg-slate-900/20 p-5 rounded-2xl border border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2 mb-1">
+                 <Clock className="w-4 h-4 text-indigo-500" />
+                 <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('todayPlan.lifestyleTitle')}</span>
+              </div>
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                <div className="flex-1 w-full sm:w-auto">
+                  <label className="text-xs font-bold text-slate-500 block mb-1.5">{t('todayPlan.wakeTimeLabel')}</label>
+                  <select value={wakeTime} onChange={e => handleWakeChange(e.target.value)} className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm">
+                    {Array.from({length:48}).map((_, i) => {
+                      const h = Math.floor(i / 2);
+                      const m = i % 2 === 0 ? '00' : '30';
+                      const t = `${String(h).padStart(2,'0')}:${m}`;
+                      return <option key={t} value={t}>{t}</option>;
+                    })}
+                  </select>
                 </div>
-              )}
-
-              <div className="flex flex-col gap-4 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700">
-                <div className="flex items-center gap-3">
-                   <Clock className="w-4 h-4 text-indigo-500" />
-                   <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{t('todayPlan.lifestyleTitle')}</span>
-                </div>
-                <div className="flex flex-col sm:flex-row items-center gap-4">
-                  <div className="flex-1 w-full sm:w-auto">
-                    <label className="text-xs font-bold text-slate-500 block mb-1">{t('todayPlan.wakeTimeLabel')}</label>
-                    <select value={wakeTime} onChange={e => handleWakeChange(e.target.value)} className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1.5 text-sm font-bold text-slate-700 dark:text-slate-200">
-                      {Array.from({length:48}).map((_, i) => {
-                        const h = Math.floor(i / 2);
-                        const m = i % 2 === 0 ? '00' : '30';
-                        const t = `${String(h).padStart(2,'0')}:${m}`;
-                        return <option key={t} value={t}>{t}</option>;
-                      })}
-                    </select>
-                  </div>
-                  <div className="flex-1 w-full sm:w-auto">
-                    <label className="text-xs font-bold text-slate-500 block mb-1">{t('todayPlan.sleepTimeLabel')}</label>
-                    <select value={sleepTime} onChange={e => handleSleepChange(e.target.value)} className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1.5 text-sm font-bold text-slate-700 dark:text-slate-200">
-                      {Array.from({length:49}).map((_, i) => {
-                        const h = Math.floor(i / 2);
-                        const m = i % 2 === 0 ? '00' : '30';
-                        const t = `${String(h).padStart(2,'0')}:${m}`;
-                        return <option key={t} value={t}>{t}</option>;
-                      })}
-                    </select>
-                  </div>
+                <div className="flex-1 w-full sm:w-auto">
+                  <label className="text-xs font-bold text-slate-500 block mb-1.5">{t('todayPlan.sleepTimeLabel')}</label>
+                  <select value={sleepTime} onChange={e => handleSleepChange(e.target.value)} className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm">
+                    {Array.from({length:48}).map((_, i) => {
+                      const h = Math.floor(i / 2);
+                      const m = i % 2 === 0 ? '00' : '30';
+                      const t = `${String(h).padStart(2,'0')}:${m}`;
+                      return <option key={t} value={t}>{t}</option>;
+                    })}
+                  </select>
                 </div>
               </div>
             </div>
           </div>
+        </div>
 
-          <div>
+        <div className="space-y-8">
              <div className="flex items-center justify-between mb-4">
                <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
                  <CalendarDays className="w-4 h-4 text-indigo-500" /> {t('todayPlan.todayTimetableTitle')}
@@ -539,15 +738,21 @@ export default function TodayPlan({ dailyGoalMinutes, setDailyGoalMinutes, setWe
                      <div className="flex-1 flex bg-white dark:bg-slate-800 relative transition-colors hover:bg-slate-50 dark:hover:bg-slate-750 cursor-pointer min-h-full" onClick={() => openEditModal(block.id, `${block.startTime} ~ ${block.endTime}`)}>
                        <div className="flex-1 p-3">
                          {goal ? (
-                           <div className="pr-8 h-full flex flex-col justify-center relative">
-                             {bookObj && chapterObj ? (
+                           <div className="pl-10 pr-8 h-full flex flex-col justify-center relative">
+                             <div className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center p-1 cursor-pointer z-10" onClick={(e) => { e.stopPropagation(); handleToggleGoalComplete(block.id); }}>
+                               <div className={cn("w-5 h-5 sm:w-6 sm:h-6 rounded-md flex items-center justify-center transition-colors border shadow-sm", goal.isCompleted ? "bg-indigo-500 border-indigo-500 text-white" : "bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 hover:border-indigo-400 dark:hover:border-indigo-500")}>
+                                 {goal.isCompleted && <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+                               </div>
+                             </div>
+                             <div className={cn("transition-all duration-200", goal.isCompleted && "opacity-50")}>
+                               {bookObj && chapterObj ? (
                                <div className="flex flex-col">
                                  <div className="flex items-center gap-1 mb-0.5">
                                    {goal.isAutoSynced && <span title={t('todayPlan.autoSyncedRecordTitle')} className="text-xs">⚡</span>}
                                    {goal.isManualAdded && <span title={t('todayPlan.manualAddedRecordTitle')} className="text-xs">📝</span>}
-                                   <span className="text-xs font-bold text-indigo-500 dark:text-indigo-400">[{bookObj.title}]</span>
+                                   <span className={cn("text-xs font-bold text-indigo-500 dark:text-indigo-400", goal.isCompleted && "line-through")}>[{bookObj.title}]</span>
                                  </div>
-                                 <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{chapterObj.title}</span>
+                                 <span className={cn("text-sm font-bold text-slate-800 dark:text-slate-200", goal.isCompleted && "line-through")}>{chapterObj.title}</span>
                                  {goal.startPage !== 0 || goal.endPage !== 0 ? (
                                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-1 font-mono">
                                       {t('todayPlan.pageRangeSummary', { start: goal.startPage, end: goal.endPage, pagesCount: (goal.endPage - goal.startPage) + 1 })}
@@ -558,9 +763,10 @@ export default function TodayPlan({ dailyGoalMinutes, setDailyGoalMinutes, setWe
                                <div className="flex items-center gap-1">
                                  {goal.isAutoSynced && <span title={t('todayPlan.autoSyncedRecordTitle')} className="text-xs">⚡</span>}
                                  {goal.isManualAdded && <span title={t('todayPlan.manualAddedRecordTitle')} className="text-xs">📝</span>}
-                                 <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{goal.memo}</span>
+                                 <span className={cn("text-sm font-medium text-slate-700 dark:text-slate-300", goal.isCompleted && "line-through")}>{goal.memo}</span>
                                </div>
                              )}
+                             </div>
                              <div className="absolute right-0 top-1/2 -translate-y-1/2 z-10">
                                <button 
                                  onClick={(e) => { 
@@ -710,8 +916,14 @@ export default function TodayPlan({ dailyGoalMinutes, setDailyGoalMinutes, setWe
       )}
 
       {showResetConfirm && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/50 dark:bg-slate-900/80 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl w-full max-w-sm border border-slate-100 dark:border-slate-700 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+        <div 
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/50 dark:bg-slate-900/80 backdrop-blur-sm"
+          onClick={() => setShowResetConfirm(false)}
+        >
+          <div 
+            className="bg-white dark:bg-slate-800 p-6 rounded-2xl w-full max-w-sm border border-slate-100 dark:border-slate-700 shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
             <h3 className="text-lg font-bold mb-3 text-slate-800 dark:text-slate-100">{t('todayPlan.resetConfirmTitle')}</h3>
             <p className="text-slate-600 dark:text-slate-400 mb-6 text-sm leading-relaxed">
               {t('todayPlan.resetConfirmBody')}<br/><br/>{t('todayPlan.resetConfirmQuestion')}
@@ -739,6 +951,65 @@ export default function TodayPlan({ dailyGoalMinutes, setDailyGoalMinutes, setWe
           </div>
         </div>
       )}
-    </div>
+
+      <BaseModal
+        isOpen={confirmCompleteAg !== null}
+        onClose={() => setConfirmCompleteAg(null)}
+        className="max-w-sm text-center p-6"
+        hideCloseButton={true}
+      >
+        {confirmCompleteAg && (
+          <>
+            <div className="w-16 h-16 bg-gradient-to-tr from-emerald-400 to-emerald-500 rounded-2xl mx-auto flex items-center justify-center mb-4 shadow-lg shadow-emerald-500/30">
+              <span className="text-3xl">🏆</span>
+            </div>
+            
+            <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">
+              {confirmCompleteAg.autoGoal.completedDates?.includes(targetDateStr) 
+                ? t('home.undoGoalConfirmation', '도전 완료를 취소할까요?') 
+                : t('home.completeGoalConfirmation', '오늘의 도전을 완료할까요?')}
+            </h3>
+            
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-8 whitespace-pre-line leading-relaxed">
+              <span className="font-bold text-indigo-500 block mb-1">『{confirmCompleteAg.book.title}』</span>
+              {confirmCompleteAg.autoGoal.dailyPages}
+              {confirmCompleteAg.autoGoal.calculationBasis === 'chapter' ? (t('chaptersPerDay') || '챕터 / 일') : t('todayPlan.pagesPerDay')}
+            </p>
+
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setConfirmCompleteAg(null)}
+                className="flex-1 py-3.5 px-4 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+              >
+                {t('common.cancel')}
+              </button>
+              <button 
+                onClick={() => toggleAutoGoalComplete(confirmCompleteAg.book.id, confirmCompleteAg.autoGoal.id)}
+                className="flex-1 py-3.5 px-4 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white font-bold transition-colors shadow-lg shadow-indigo-500/30"
+              >
+                {t('common.confirm')}
+              </button>
+            </div>
+          </>
+        )}
+      </BaseModal>
+
+      {editingAg && (
+        <AutoGoalModal
+          isOpen={true}
+          onClose={() => setEditingAg(null)}
+          book={editingAg.book}
+          goalId={editingAg.goalId}
+          setBooks={setBooks}
+        />
+      )}
+
+      <AllAutoGoalsModal
+        isOpen={showAllAutoGoalsModal}
+        onClose={() => setShowAllAutoGoalsModal(false)}
+        books={books}
+        setBooks={setBooks}
+      />
+    </>
   );
 }

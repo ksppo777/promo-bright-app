@@ -13,6 +13,8 @@ import Alarms from "./components/Alarms";
 import Calendar from "./components/Calendar";
 import TodayPlan from "./components/TodayPlan";
 import PermissionWizard from "./components/PermissionWizard";
+import AlertGuideModal from "./components/AlertGuideModal";
+import { usePermissionChecker } from "./hooks/usePermissionChecker";
 import {
   Book as BookIcon,
   Timer,
@@ -30,7 +32,7 @@ import {
   Trash2,
   Loader2,
 } from "lucide-react";
-import { cn } from "./lib/utils";
+import { cn, useLockBodyScroll } from "./lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { differenceInDays, parseISO } from "date-fns";
 import { autoSyncDrive, createDriveSnapshot } from "./lib/driveSync";
@@ -111,6 +113,8 @@ export default function App() {
     setHasSeenPermissionWizard,
     isWizardFlagLoaded,
   ] = useLocalStorage<boolean>("study-helper-seen-wizard", false);
+  const [hasSeenAlertGuide, setHasSeenAlertGuide, isAlertGuideLoaded] = 
+    useLocalStorage<boolean>("study-helper-seen-alert-guide", false);
   const [showNavLabelsMobile, setShowNavLabelsMobile, isNavLabelsLoaded] =
     useLocalStorage<boolean>("study-helper-nav-labels", false);
   const [dDaySize, setDDaySize, isDDaySizeLoaded] = useLocalStorage<number>(
@@ -133,6 +137,27 @@ export default function App() {
   >("study-helper-language", null);
   const [isNewInstallCheckDone, setIsNewInstallCheckDone] = useState(false);
   const [showAppExitModal, setShowAppExitModal] = useState(false);
+
+  const [forceShowPermissionWizard, setForceShowPermissionWizard] = useState(false);
+  const { isChecking: isPermsChecking, permissionsState, checkPerms } = usePermissionChecker();
+
+  useEffect(() => {
+    if (Capacitor.isNativePlatform() && !isPermsChecking) {
+      const allGranted =
+        permissionsState.overlay &&
+        permissionsState.exactAlarm &&
+        permissionsState.notifications &&
+        permissionsState.batteryOptimization;
+      if (!allGranted) {
+        setForceShowPermissionWizard(true);
+      } else {
+        setForceShowPermissionWizard(false);
+        if (isWizardFlagLoaded && !hasSeenPermissionWizard) {
+          setHasSeenPermissionWizard(true);
+        }
+      }
+    }
+  }, [isPermsChecking, permissionsState, isWizardFlagLoaded, hasSeenPermissionWizard, setHasSeenPermissionWizard]);
 
   useEffect(() => {
     let unregisterCapacitor: any;
@@ -223,35 +248,21 @@ export default function App() {
       books,
       sessions,
       alarms,
-      isDarkMode,
       weeklyPlans,
       monthlyPlans,
       dailyGoalMinutes,
-      autoGoalDisplayMode,
       dDay,
-      globalFontSize,
-      preventWordWrap,
-      showNavLabelsMobile,
       dDaySize,
-      language,
-      hideHeroText,
     }),
     [
       books,
       sessions,
       alarms,
-      isDarkMode,
       weeklyPlans,
       monthlyPlans,
       dailyGoalMinutes,
-      autoGoalDisplayMode,
       dDay,
-      globalFontSize,
-      preventWordWrap,
-      showNavLabelsMobile,
       dDaySize,
-      language,
-      hideHeroText,
     ]
   );
 
@@ -352,6 +363,8 @@ export default function App() {
   const [activeAlarmNotification, setActiveAlarmNotification] =
     useState<StudyAlarm | null>(null);
 
+  useLockBodyScroll(showAppExitModal || timerEndNotification !== null || activeAlarmNotification !== null);
+
   useEffect(() => {
     if (timerEndNotification) {
       return registerBackHandler(() => {
@@ -402,7 +415,9 @@ export default function App() {
       audio.play().catch(() => {});
     }
     if (mode === "vibrate" || mode === "both") {
-      if (navigator.vibrate) {
+      if (Capacitor.isNativePlatform()) {
+        SystemHelper.vibrate().catch(() => {});
+      } else if (navigator.vibrate) {
         navigator.vibrate([500, 200, 500, 200, 500]);
       }
     }
@@ -546,33 +561,33 @@ export default function App() {
   useEffect(() => {
     let interval: any;
     if (isActive && timeLeft > 0) {
+      const endTime = Date.now() + timeLeft * 1000;
       if (Capacitor.isNativePlatform()) {
         SystemHelper.startForegroundService({
           title: "Bright Study",
-          text: "타이머 진행...",
+          text: "타이머 진행중...",
+          endTimeStr: endTime.toString()
         }).catch(() => {});
+        SystemHelper.acquireWakelock().catch(() => {});
       }
-      const endTime = Date.now() + timeLeft * 1000;
       interval = setInterval(() => {
         const nextTime = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
         setTimeLeft(nextTime);
-        if (Capacitor.isNativePlatform() && nextTime > 0) {
-          const m = Math.floor(nextTime / 60);
-          const s = nextTime % 60;
-          SystemHelper.updateForegroundService({
-            text: `${m}분 ${s}초 남음`,
-          }).catch(() => {});
+        if (!Capacitor.isNativePlatform() && nextTime > 0) {
+           // On web, we could theoretically update something, but we don't have Foreground Service.
         }
       }, 500);
     } else {
       if (Capacitor.isNativePlatform()) {
         SystemHelper.stopForegroundService().catch(() => {});
+        SystemHelper.releaseWakelock().catch(() => {});
       }
     }
     return () => {
       clearInterval(interval);
       if (Capacitor.isNativePlatform()) {
         SystemHelper.stopForegroundService().catch(() => {});
+        SystemHelper.releaseWakelock().catch(() => {});
       }
     };
   }, [isActive]);
@@ -739,21 +754,11 @@ export default function App() {
     if (data.books) setBooks(data.books);
     if (data.sessions) setSessions(data.sessions);
     if (data.alarms) setAlarms(data.alarms);
-    if (data.isDarkMode !== undefined) setIsDarkMode(data.isDarkMode);
     if (data.weeklyPlans) setWeeklyPlans(data.weeklyPlans);
     if (data.monthlyPlans) setMonthlyPlans(data.monthlyPlans);
     if (data.dailyGoalMinutes) setDailyGoalMinutes(data.dailyGoalMinutes);
-    if (data.autoGoalDisplayMode)
-      setAutoGoalDisplayMode(data.autoGoalDisplayMode);
     if (data.dDay !== undefined) setDDay(data.dDay);
-    if (data.globalFontSize) setGlobalFontSize(data.globalFontSize);
-    if (data.preventWordWrap !== undefined)
-      setPreventWordWrap(data.preventWordWrap);
-    if (data.showNavLabelsMobile !== undefined)
-      setShowNavLabelsMobile(data.showNavLabelsMobile);
     if (data.dDaySize) setDDaySize(data.dDaySize);
-    if (data.language) setLanguage(data.language);
-    if (data.hideHeroText !== undefined) setHideHeroText(data.hideHeroText);
 
     setLocalDataTimestamp(newTimestamp);
   };
@@ -927,8 +932,17 @@ export default function App() {
 
   return (
     <>
-      {!hasSeenPermissionWizard && Capacitor.isNativePlatform() && (
-        <PermissionWizard onComplete={() => setHasSeenPermissionWizard(true)} />
+      {forceShowPermissionWizard && Capacitor.isNativePlatform() && (
+        <PermissionWizard 
+          onComplete={() => {
+             setForceShowPermissionWizard(false);
+             setHasSeenPermissionWizard(true);
+             checkPerms();
+          }} 
+        />
+      )}
+      {!forceShowPermissionWizard && hasSeenPermissionWizard && !hasSeenAlertGuide && (
+        <AlertGuideModal onClose={() => setHasSeenAlertGuide(true)} />
       )}
       <div
         className="min-h-screen bg-slate-50 dark:bg-slate-900 font-sans text-slate-900 dark:text-slate-100 transition-colors"
@@ -984,7 +998,7 @@ export default function App() {
                       <Icon className="w-4 h-4" />
                       <span
                         className={cn(
-                          "uppercase text-[10px] tracking-wider mt-0.5",
+                          "uppercase text-[0.625rem] tracking-wider mt-0.5",
                           showNavLabelsMobile ? "inline" : "hidden md:inline"
                         )}
                       >
@@ -1000,8 +1014,19 @@ export default function App() {
 
         {/* Timer End Modal */}
         {timerEndNotification && (
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center animate-in zoom-in-95 duration-200">
+          <div 
+            className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => {
+              if (capacitorNotifications?.stopAlarmSound) {
+                capacitorNotifications.stopAlarmSound();
+              }
+              setTimerEndNotification(null);
+            }}
+          >
+            <div 
+              className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center animate-in zoom-in-95 duration-200"
+              onClick={e => e.stopPropagation()}
+            >
               <div className="w-20 h-20 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center text-4xl mb-6 shadow-inner">
                 {timerEndNotification === "focus_ended" ? "🎉" : "💪"}
               </div>
@@ -1042,8 +1067,14 @@ export default function App() {
 
         {/* Alarm Trigger Modal */}
         {activeAlarmNotification && (
-          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center animate-in zoom-in-95 duration-200">
+          <div 
+            className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setActiveAlarmNotification(null)}
+          >
+            <div 
+              className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center animate-in zoom-in-95 duration-200"
+              onClick={e => e.stopPropagation()}
+            >
               <div className="w-20 h-20 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center text-4xl mb-6 shadow-inner animate-bounce">
                 ⏰
               </div>
@@ -1132,7 +1163,7 @@ export default function App() {
                           <Trash2 className="w-3.5 h-3.5" /> 삭제
                         </button>
                         <div className="flex items-center justify-between px-3 py-2 border-t border-slate-100 dark:border-slate-600">
-                          <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                          <span className="text-[0.625rem] font-bold text-slate-500 dark:text-slate-400">
                             크기
                           </span>
                           <div className="flex gap-1">
@@ -1230,7 +1261,7 @@ export default function App() {
                           })()}
                         </span>
                       </div>
-                      <div className="text-[10px] font-bold text-slate-400 mt-1">
+                      <div className="text-[0.625rem] font-bold text-slate-400 mt-1">
                         {dDay.date.replace(/-/g, ".")}
                       </div>
                     </div>
@@ -1269,6 +1300,7 @@ export default function App() {
                   weeklyPlans={weeklyPlans}
                   setWeeklyPlans={setWeeklyPlans}
                   books={activeBooks}
+                  setBooks={setBooks}
                   setActiveTab={setActiveTab}
                   autoGoalDisplayMode={autoGoalDisplayMode}
                 />
@@ -1352,8 +1384,12 @@ export default function App() {
 
         <AnimatePresence>
           {showAppExitModal && (
-            <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[9999] flex flex-col items-center justify-center p-4">
+            <div 
+              className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[9999] flex flex-col items-center justify-center p-4"
+              onClick={() => setShowAppExitModal(false)}
+            >
               <motion.div
+                onClick={(e) => e.stopPropagation()}
                 initial={{ opacity: 0, scale: 0.95, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 10 }}
@@ -1372,6 +1408,8 @@ export default function App() {
                   <button
                     onClick={() => {
                       if (Capacitor.isNativePlatform()) {
+                        SystemHelper.stopForegroundService().catch(() => {});
+                        SystemHelper.releaseWakelock().catch(() => {});
                         CapApp.exitApp();
                       } else if ((window as any).__TAURI__) {
                         window.close();

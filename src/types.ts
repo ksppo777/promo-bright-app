@@ -27,7 +27,9 @@ export interface AutoGoal {
   iterations: number; // 회독수
   targetChapterIds?: string[]; // Optional specific chapters
   dailyPages: number; // 매일 달성해야하는 분량 (Calculated)
-  totalTargetPages: number; // 총 페이지 수 * 회독수
+  totalTargetPages: number; // 총 페이지 수 * 회독수 (Calculated)
+  calculationBasis?: "page" | "chapter"; // 페이지 기준 vs 챕터 기준
+  completedDates?: string[]; // YYYY-MM-DD tracking completions
 }
 
 export interface Book {
@@ -41,6 +43,8 @@ export interface Book {
   autoGoals?: AutoGoal[];
   createdAt: number;
   isTrash?: boolean;
+  chapterPrefixFormat?: 'none' | 'sequential' | 'reverse' | 'custom';
+  chapterCustomPrefix?: string;
 }
 
 export interface StudySession {

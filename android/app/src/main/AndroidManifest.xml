@@ -19,6 +19,7 @@
     <!-- 백그라운드 타이머 정확도 보장을 위한 알람 권한 -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- 재부팅 시 등록된 알람 복구 권한 -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />

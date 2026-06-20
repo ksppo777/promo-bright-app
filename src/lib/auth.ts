@@ -46,7 +46,56 @@ try {
 // Replace with the user's Web Client ID later
 const WEB_CLIENT_ID = '926621621039-b6idpq9gvm3h1gn5ltb2p609pf401aaf.apps.googleusercontent.com';
 
-const isTauri = () => ('__TAURI_INTERNALS__' in window);
+const isTauri = () => (typeof window !== 'undefined' && ('__TAURI__' in window || '__TAURI_INTERNALS__' in window));
+
+supabase.auth.onAuthStateChange((event, session) => {
+  if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
+    let providerToken = session.provider_token;
+    
+    // Fallback: Check if captured early
+    if (!providerToken && typeof window !== 'undefined') {
+       try {
+         const earlyToken = localStorage.getItem('app_google_token');
+         if (earlyToken) {
+           providerToken = earlyToken;
+         }
+       } catch(e) {}
+    }
+    
+    // Fallback 2: Parse from URL if still missing
+    if (!providerToken && typeof window !== 'undefined') {
+       const hashStr = window.location.hash.substring(1);
+       if (hashStr.includes('provider_token=')) {
+          const params = new URLSearchParams(hashStr);
+          providerToken = params.get('provider_token') || undefined;
+       }
+    }
+
+    if (providerToken) {
+      cachedAccessToken = providerToken;
+      try {
+        localStorage.setItem(STORAGE_KEY_TOKEN, cachedAccessToken);
+        localStorage.setItem(STORAGE_KEY_EXPIRY, (Date.now() + 3500 * 1000).toString());
+      } catch(e) {}
+    }
+    
+    const meta = session.user?.user_metadata;
+    if (meta) {
+      cachedUser = {
+        displayName: meta.full_name || meta.name || null,
+        email: session.user?.email || null,
+        photoURL: meta.avatar_url || meta.picture || null
+      };
+      try {
+        localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(cachedUser));
+      } catch(e) {}
+    }
+
+    if (cachedAccessToken && cachedUser && onAuthSuccessCallback) {
+      onAuthSuccessCallback(cachedUser, cachedAccessToken);
+    }
+  }
+});
 
 export const initAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
@@ -57,48 +106,31 @@ export const initAuth = (
 
   const performSilentLogin = async () => {
     // 1. URL 해시 혹은 Supabase Session을 통해 데스크톱(Tauri) 환경에서 리턴된 토큰 추출
-    if (isTauri()) {
-      const hash = window.location.hash;
-      if (hash.includes('provider_token=')) {
+      if (isTauri()) {
         try {
-          const params = new URLSearchParams(hash.substring(1));
-          const providerToken = params.get('provider_token'); // 이건 구글 드라이브 API 호출용
-          
-          if (providerToken) {
-            cachedAccessToken = providerToken;
-            localStorage.setItem(STORAGE_KEY_TOKEN, cachedAccessToken);
-            localStorage.setItem(STORAGE_KEY_EXPIRY, (Date.now() + 3500 * 1000).toString());
+          const { data } = await supabase.auth.getSession();
+          if (data?.session) {
+            const providerToken = data.session.provider_token;
+            if (providerToken) {
+              cachedAccessToken = providerToken;
+              localStorage.setItem(STORAGE_KEY_TOKEN, cachedAccessToken);
+              localStorage.setItem(STORAGE_KEY_EXPIRY, (Date.now() + 3500 * 1000).toString());
+            }
             
-            // 해시값은 지워서 깔끔하게 만들기
-            window.history.replaceState({}, document.title, window.location.pathname);
-            
-            // Supabase 세션에서 유저 정보 가져오기
-            const { data } = await supabase.auth.getSession();
-            if (data?.session?.user) {
-              const meta = data.session.user.user_metadata;
+            const meta = data.session.user?.user_metadata;
+            if (meta) {
               cachedUser = {
                 displayName: meta.full_name || meta.name || null,
-                email: data.session.user.email || null,
+                email: data.session.user?.email || null,
                 photoURL: meta.avatar_url || meta.picture || null
               };
               localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(cachedUser));
-              
-              if (onAuthSuccessCallback) onAuthSuccessCallback(cachedUser, cachedAccessToken);
-              return;
-            } else {
-               // Fallback
-               const user = await fetchUserInfoFromWeb(cachedAccessToken);
-               cachedUser = user;
-               localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(user));
-               if (onAuthSuccessCallback) onAuthSuccessCallback(cachedUser, cachedAccessToken);
-               return;
             }
           }
         } catch(e) {
-          console.error("Failed to parse Tauri Supabase OAuth info:", e);
+          console.error("Failed to parse Tauri Supabase session info:", e);
         }
       }
-    }
 
     if (cachedAccessToken && cachedUser) {
       // We already have a valid token from local storage
@@ -176,6 +208,9 @@ export const googleSignIn = async (): Promise<{ user: User, accessToken: string 
         options: {
           scopes: `profile email ${DRIVE_APP_DATA_SCOPE}`,
           redirectTo: redirectUri,
+          queryParams: {
+            prompt: 'select_account',
+          }
         }
       });
       if (error) {
@@ -227,7 +262,7 @@ export const googleSignIn = async (): Promise<{ user: User, accessToken: string 
         });
       }
       
-      googleTokenClient.requestAccessToken();
+      googleTokenClient.requestAccessToken({ prompt: 'select_account' });
     });
   }
 };

@@ -4,8 +4,9 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 import { format, subDays, parseISO, isSameDay, startOfWeek, startOfMonth, endOfMonth, isAfter, addDays, getDay, startOfDay } from 'date-fns';
 import { ko, enUS, ja as jaLocale } from 'date-fns/locale';
 import { X, CheckCircle2 } from 'lucide-react';
-import { cn } from '../lib/utils';
-import { motion, AnimatePresence } from 'motion/react';
+import { cn, useLockBodyScroll } from '../lib/utils';
+import { motion } from 'motion/react';
+import BaseModal from './BaseModal';
 import TodayPlan from './TodayPlan';
 import { useTranslation } from 'react-i18next';
 import { registerBackHandler } from '../lib/backHandler';
@@ -18,17 +19,20 @@ interface StatisticsProps {
   dailyGoalMinutes: number;
   setDailyGoalMinutes?: (val: number) => void;
   books?: any[];
+  setBooks?: any;
   setActiveTab?: (tab: string) => void;
   autoGoalDisplayMode?: 'multiple' | 'single';
 }
 
-export default function Statistics({ sessions, realTimeAddedSeconds = 0, weeklyPlans, setWeeklyPlans, dailyGoalMinutes, setDailyGoalMinutes, books = [], setActiveTab, autoGoalDisplayMode = 'multiple' }: StatisticsProps) {
+export default function Statistics({ sessions, realTimeAddedSeconds = 0, weeklyPlans, setWeeklyPlans, dailyGoalMinutes, setDailyGoalMinutes, books = [], setBooks, setActiveTab, autoGoalDisplayMode = 'multiple' }: StatisticsProps) {
   const { t, i18n } = useTranslation();
   const dateLocale = i18n.language === 'ja' ? jaLocale : i18n.language === 'en' ? enUS : ko;
   const [showWeeklyModal, setShowWeeklyModal] = useState(false);
   const [showMonthlyModal, setShowMonthlyModal] = useState(false);
   const [showPastPlansModal, setShowPastPlansModal] = useState(false);
   const [pastPlansDate, setPastPlansDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+
+  useLockBodyScroll(showWeeklyModal || showMonthlyModal || showPastPlansModal);
 
   useEffect(() => {
     if (showWeeklyModal) {
@@ -274,29 +278,8 @@ export default function Statistics({ sessions, realTimeAddedSeconds = 0, weeklyP
         </div>
       </div>
 
-      <AnimatePresence>
-        {showWeeklyModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }} 
-              exit={{ opacity: 0 }} 
-              className="absolute inset-0 bg-blue-900/20 dark:bg-slate-900/60 backdrop-blur-sm"
-              onClick={() => setShowWeeklyModal(false)}
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-7xl bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-6 sm:p-8 flex flex-col overflow-hidden max-h-[90vh]"
-            >
-              <button 
-                onClick={() => setShowWeeklyModal(false)} 
-                className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors bg-slate-100 dark:bg-slate-700 rounded-full z-10"
-              >
-                <X className="w-5 h-5" />
-              </button>
-              
+      <>
+        <BaseModal isOpen={showWeeklyModal} onClose={() => setShowWeeklyModal(false)} className="max-w-7xl p-6 sm:p-8 overflow-hidden h-max max-h-[90vh]">
               <h2 className="text-2xl font-black text-blue-900 dark:text-white mb-2 shrink-0">{t('statistics.thisWeekTitle')}</h2>
               <p className="text-sm font-medium text-blue-400 dark:text-slate-400 mb-6 shrink-0">{t('statistics.thisWeekDesc')}</p>
 
@@ -343,31 +326,9 @@ export default function Statistics({ sessions, realTimeAddedSeconds = 0, weeklyP
                   })}
                 </div>
               </div>
-            </motion.div>
-          </div>
-        )}
+        </BaseModal>
 
-        {showMonthlyModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }} 
-              exit={{ opacity: 0 }} 
-              className="absolute inset-0 bg-blue-900/20 dark:bg-slate-900/60 backdrop-blur-sm"
-              onClick={() => setShowMonthlyModal(false)}
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-2xl bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-6 sm:p-8 flex flex-col"
-            >
-              <button 
-                onClick={() => setShowMonthlyModal(false)} 
-                className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors bg-slate-100 dark:bg-slate-700 rounded-full"
-              >
-                <X className="w-5 h-5" />
-              </button>
+        <BaseModal isOpen={showMonthlyModal} onClose={() => setShowMonthlyModal(false)} className="max-w-2xl p-6 sm:p-8">
               
               <h2 className="text-2xl font-black text-blue-900 dark:text-white mb-2">{format(monthStart, 'MMMM', { locale: dateLocale })} {t('statistics.calendar')}</h2>
               <p className="text-sm font-medium text-blue-400 dark:text-slate-400 mb-6">{t('statistics.calendarDesc')}</p>
@@ -416,19 +377,23 @@ export default function Statistics({ sessions, realTimeAddedSeconds = 0, weeklyP
                   );
                 })}
               </div>
-            </motion.div>
-          </div>
-        )}
+      </BaseModal>
 
         {showPastPlansModal && (
-          <div className="fixed inset-0 z-50 flex flex-col pt-16 pb-4 px-4 bg-slate-50 dark:bg-slate-900 overflow-y-auto">
+          <div 
+            className="fixed inset-0 z-50 flex flex-col pt-16 pb-4 px-4 bg-slate-50 dark:bg-slate-900 overflow-y-auto"
+            onClick={() => setShowPastPlansModal(false)}
+          >
             <button 
               onClick={() => setShowPastPlansModal(false)} 
               className="fixed top-4 right-4 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors bg-white dark:bg-slate-800 rounded-full shadow-md z-50"
             >
               <X className="w-6 h-6" />
             </button>
-            <div className="w-full max-w-4xl mx-auto flex flex-col gap-6 relative z-10 mb-8 pt-4">
+            <div 
+              className="w-full max-w-4xl mx-auto flex flex-col gap-6 relative z-10 mb-8 pt-4"
+              onClick={(e) => e.stopPropagation()}
+            >
               <div className="flex flex-col sm:flex-row items-center gap-4 bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
                 <span className="text-lg font-bold text-slate-700 dark:text-slate-200">{t('statistics.pastDateLabel')}</span>
                 <input 
@@ -451,7 +416,8 @@ export default function Statistics({ sessions, realTimeAddedSeconds = 0, weeklyP
                   setDailyGoalMinutes={setDailyGoalMinutes || (() => {})} 
                   weeklyPlans={weeklyPlans} 
                   setWeeklyPlans={setWeeklyPlans} 
-                  books={books} 
+                  books={books || []} 
+                  setBooks={setBooks || (() => {})} 
                   setActiveTab={setActiveTab || (() => {})} 
                   autoGoalDisplayMode={autoGoalDisplayMode} 
                   dateStr={pastPlansDate} 
@@ -460,7 +426,7 @@ export default function Statistics({ sessions, realTimeAddedSeconds = 0, weeklyP
             </div>
           </div>
         )}
-      </AnimatePresence>
+      </>
     </div>
   );
 }
