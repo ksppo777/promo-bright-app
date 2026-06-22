@@ -104,7 +104,7 @@ export default function Home({ books, setBooks, sessions, alarms, setAlarms, set
   };
 
   const todaySessions = sessions.filter(s => isSameDay(parseISO(s.date), today));
-  const todaySeconds = todaySessions.reduce((acc, curr) => acc + (curr.durationSeconds || curr.durationMinutes * 60), 0) + realTimeAddedSeconds;
+  const todaySeconds = Math.min(86400, todaySessions.reduce((acc, curr) => acc + (curr.durationSeconds || curr.durationMinutes * 60), 0) + realTimeAddedSeconds);
   const todayMinutes = Math.floor(todaySeconds / 60);
   const progressPercent = dailyGoalMinutes > 0 ? Math.min(100, Math.round((todayMinutes / dailyGoalMinutes) * 100)) : 0;
 
@@ -123,6 +123,7 @@ export default function Home({ books, setBooks, sessions, alarms, setAlarms, set
       days.shift();
     } else if (days[0] === checkTime - 86400000) {
       // Didn't study today yet, streak alive
+      checkTime -= 86400000;
     } else {
       return 0; // Streak broken
     }

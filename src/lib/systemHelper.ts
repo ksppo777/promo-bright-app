@@ -1,14 +1,6 @@
 import { registerPlugin } from "@capacitor/core";
 
 export interface SystemHelperPlugin {
-  startForegroundService(options: {
-    title: string;
-    text: string;
-    endTime?: number;
-    endTimeStr?: string;
-  }): Promise<void>;
-  updateForegroundService(options: { text: string; endTime?: number; endTimeStr?: string }): Promise<void>;
-  stopForegroundService(): Promise<void>;
   bringToFront(): Promise<void>;
   checkPermissions(): Promise<{
     overlay: boolean;
@@ -22,7 +14,10 @@ export interface SystemHelperPlugin {
   releaseWakelock(): Promise<void>;
   vibrate(): Promise<void>;
   getLogcat(): Promise<{ logcat: string }>;
-  saveLogToDownloads(options: { data: string; fileName: string }): Promise<{ path: string }>;
+  saveLogToDownloads(options: {
+    data: string;
+    fileName: string;
+  }): Promise<{ path: string }>;
 }
 
 export const SystemHelper = registerPlugin<SystemHelperPlugin>("SystemHelper");

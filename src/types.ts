@@ -59,8 +59,28 @@ export interface StudySession {
   timetableDate?: string;
 }
 
-export interface ExamDate {
+export interface TimeSlotGoal {
   id: string;
+  hour?: number; // legacy
+  blockId?: string; // modern identifier for customized blocks
+  bookId: string;
+  chapterId: string;
+  startPage: number;
+  endPage: number;
+  memo: string;
+  isAutoSynced?: boolean;
+  isManualAdded?: boolean;
+  isCompleted?: boolean;
+}
+
+export interface TimeBlock {
+  id: string;
+  startTime: string;
+  endTime: string;
+  duration: number;
+}
+
+export interface ExamDate {
   title: string;
   date: string; // YYYY-MM-DD
 }

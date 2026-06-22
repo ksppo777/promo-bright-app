@@ -2,7 +2,13 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useLocalStorage } from "./lib/utils";
 import { checkAndApplyUpdate } from "./supabaseUpdate";
 import { getAllKeys } from "./lib/storage";
-import { Book, StudySession, StudyAlarm } from "./types";
+import {
+  Book,
+  StudySession,
+  StudyAlarm,
+  TimeSlotGoal,
+  TimeBlock,
+} from "./types";
 import { useTranslation } from "react-i18next";
 import BookManager from "./components/BookManager";
 import PomodoroTimer from "./components/PomodoroTimer";
@@ -76,6 +82,26 @@ export default function App() {
   const [monthlyPlans, setMonthlyPlans, isMonthlyPlansLoaded] = useLocalStorage<
     Record<string, string>
   >("brightstudy_monthly_plans", {});
+  const [timetableRecords, setTimetableRecords, isTimetableRecordsLoaded] =
+    useLocalStorage<Record<string, TimeSlotGoal[]>>(
+      "study-timetable-records",
+      {}
+    );
+  const [globalWakeTimeRaw, setGlobalWakeTimeRaw, isGlobalWakeLoaded] =
+    useLocalStorage<string | number>("study-wake-hour", 8);
+  const [globalSleepTimeRaw, setGlobalSleepTimeRaw, isGlobalSleepLoaded] =
+    useLocalStorage<string | number>("study-sleep-hour", 23);
+  const [dailySettingsDict, setDailySettingsDict, isDailySettingsLoaded] =
+    useLocalStorage<
+      Record<
+        string,
+        { goal: number; wake: string | number; sleep: string | number }
+      >
+    >("study-daily-settings", {});
+  const [dailyLayouts, setDailyLayouts, isDailyLayoutsLoaded] = useLocalStorage<
+    Record<string, TimeBlock[]>
+  >("study-timetable-layouts", {});
+
   const [dailyGoalMinutes, setDailyGoalMinutes, isDailyGoalLoaded] =
     useLocalStorage<number>("study-helper-daily-goal", 120);
   const [isDarkMode, setIsDarkMode, isDarkLoaded] = useLocalStorage<boolean>(
@@ -113,7 +139,7 @@ export default function App() {
     setHasSeenPermissionWizard,
     isWizardFlagLoaded,
   ] = useLocalStorage<boolean>("study-helper-seen-wizard", false);
-  const [hasSeenAlertGuide, setHasSeenAlertGuide, isAlertGuideLoaded] = 
+  const [hasSeenAlertGuide, setHasSeenAlertGuide, isAlertGuideLoaded] =
     useLocalStorage<boolean>("study-helper-seen-alert-guide", false);
   const [showNavLabelsMobile, setShowNavLabelsMobile, isNavLabelsLoaded] =
     useLocalStorage<boolean>("study-helper-nav-labels", false);
@@ -138,8 +164,13 @@ export default function App() {
   const [isNewInstallCheckDone, setIsNewInstallCheckDone] = useState(false);
   const [showAppExitModal, setShowAppExitModal] = useState(false);
 
-  const [forceShowPermissionWizard, setForceShowPermissionWizard] = useState(false);
-  const { isChecking: isPermsChecking, permissionsState, checkPerms } = usePermissionChecker();
+  const [forceShowPermissionWizard, setForceShowPermissionWizard] =
+    useState(false);
+  const {
+    isChecking: isPermsChecking,
+    permissionsState,
+    checkPerms,
+  } = usePermissionChecker();
 
   useEffect(() => {
     if (Capacitor.isNativePlatform() && !isPermsChecking) {
@@ -157,7 +188,13 @@ export default function App() {
         }
       }
     }
-  }, [isPermsChecking, permissionsState, isWizardFlagLoaded, hasSeenPermissionWizard, setHasSeenPermissionWizard]);
+  }, [
+    isPermsChecking,
+    permissionsState,
+    isWizardFlagLoaded,
+    hasSeenPermissionWizard,
+    setHasSeenPermissionWizard,
+  ]);
 
   useEffect(() => {
     let unregisterCapacitor: any;
@@ -228,6 +265,11 @@ export default function App() {
     isAlarmsLoaded &&
     isWeeklyPlansLoaded &&
     isMonthlyPlansLoaded &&
+    isTimetableRecordsLoaded &&
+    isGlobalWakeLoaded &&
+    isGlobalSleepLoaded &&
+    isDailySettingsLoaded &&
+    isDailyLayoutsLoaded &&
     isDailyGoalLoaded &&
     isDarkLoaded &&
     isAutoGoalLoaded &&
@@ -250,6 +292,11 @@ export default function App() {
       alarms,
       weeklyPlans,
       monthlyPlans,
+      timetableRecords,
+      globalWakeTimeRaw,
+      globalSleepTimeRaw,
+      dailySettingsDict,
+      dailyLayouts,
       dailyGoalMinutes,
       dDay,
       dDaySize,
@@ -260,6 +307,11 @@ export default function App() {
       alarms,
       weeklyPlans,
       monthlyPlans,
+      timetableRecords,
+      globalWakeTimeRaw,
+      globalSleepTimeRaw,
+      dailySettingsDict,
+      dailyLayouts,
       dailyGoalMinutes,
       dDay,
       dDaySize,
@@ -341,7 +393,9 @@ export default function App() {
   const [timeLeft, setTimeLeft] = useState(25 * 60);
   const [isActive, setIsActive] = useState(false);
   const [timerMode, setTimerMode] = useState<"focus" | "break">("focus");
-  const [timerType, setTimerType] = useState<"beginner" | "expert">("beginner");
+  const [timerType, setTimerType] = useState<
+    "beginner" | "expert" | "stopwatch"
+  >("beginner");
   const [expertTime, setExpertTime] = useState({
     hours: 0,
     minutes: 25,
@@ -363,7 +417,66 @@ export default function App() {
   const [activeAlarmNotification, setActiveAlarmNotification] =
     useState<StudyAlarm | null>(null);
 
-  useLockBodyScroll(showAppExitModal || timerEndNotification !== null || activeAlarmNotification !== null);
+  useEffect(() => {
+    // Check auto-restore backup
+    const backupStr = localStorage.getItem("study_timer_backup");
+    if (backupStr) {
+      try {
+        const backup = JSON.parse(backupStr);
+        if (backup && backup.isActive) {
+          const elapsed = Math.floor(
+            (Date.now() - backup.startTimestamp) / 1000
+          );
+
+          if (backup.timerMode) setTimerMode(backup.timerMode);
+          if (backup.timerType) setTimerType(backup.timerType);
+          if (backup.timerBookId) setTimerBookId(backup.timerBookId);
+          if (backup.timerChapterId) setTimerChapterId(backup.timerChapterId);
+
+          if (backup.timerType === "stopwatch") {
+            const restoredTime = backup.baseTimeLeft + elapsed;
+            setTimeLeft(Math.max(0, restoredTime));
+            setIsActive(true);
+          } else {
+            const restoredTime = backup.baseTimeLeft - elapsed;
+            if (restoredTime <= 0) {
+              const exactEndTimestamp =
+                backup.startTimestamp + backup.baseTimeLeft * 1000;
+              const exactEndDate = new Date(exactEndTimestamp).toISOString();
+
+              setIsActive(false);
+              setTimeLeft(0);
+
+              if (backup.timerMode === "focus") {
+                addStudySession(
+                  backup.initialTimeLeft,
+                  backup.timerBookId,
+                  backup.timerChapterId,
+                  undefined,
+                  exactEndDate
+                );
+                setTimerEndNotification("focus_ended");
+              } else {
+                setTimerEndNotification("break_ended");
+              }
+            } else {
+              setTimeLeft(restoredTime);
+              setIsActive(true);
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Failed to restore timer backup", e);
+        localStorage.removeItem("study_timer_backup");
+      }
+    }
+  }, []);
+
+  useLockBodyScroll(
+    showAppExitModal ||
+      timerEndNotification !== null ||
+      activeAlarmNotification !== null
+  );
 
   useEffect(() => {
     if (timerEndNotification) {
@@ -436,46 +549,55 @@ export default function App() {
     isActive,
     timeLeft,
     timerMode,
+    timerType,
   });
 
   useEffect(() => {
-    timerStateRef.current = { isActive, timeLeft, timerMode };
-  }, [isActive, timeLeft, timerMode]);
+    timerStateRef.current = { isActive, timeLeft, timerMode, timerType };
+  }, [isActive, timeLeft, timerMode, timerType]);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
 
-    const listener = CapApp.addListener(
-      "appStateChange",
-      ({ isActive: appActive }) => {
-        const { isActive, timeLeft, timerMode } = timerStateRef.current;
-        if (!appActive) {
-          // App went to background
-          if (isActive && timeLeft > 0 && capacitorNotifications) {
-            capacitorNotifications.scheduleTimerNotification(
-              timeLeft,
-              timerMode
-            );
-          }
-        } else {
-          // App came to foreground
-          if (capacitorNotifications) {
-            capacitorNotifications.cancelTimerNotification();
-          }
+    let appListenerHandle: any = null;
+
+    CapApp.addListener("appStateChange", ({ isActive: appActive }) => {
+      const { isActive, timeLeft, timerMode, timerType } =
+        timerStateRef.current;
+      if (!appActive) {
+        // App went to background
+        if (
+          isActive &&
+          timeLeft > 0 &&
+          timerType !== "stopwatch" &&
+          capacitorNotifications
+        ) {
+          capacitorNotifications.scheduleTimerNotification(timeLeft, timerMode);
+        }
+      } else {
+        // App came to foreground
+        if (capacitorNotifications) {
+          capacitorNotifications.cancelTimerNotification();
         }
       }
-    );
+    }).then((l) => {
+      appListenerHandle = l;
+    });
 
     return () => {
-      listener.then((l) => l.remove());
+      if (appListenerHandle) appListenerHandle.remove();
     };
   }, []);
 
   const initialTimeLeft =
     timerMode === "focus"
-      ? timerType === "beginner"
+      ? timerType === "stopwatch"
+        ? 0
+        : timerType === "beginner"
         ? 25 * 60
         : expertTime.hours * 3600 + expertTime.minutes * 60 + expertTime.seconds
+      : timerType === "stopwatch"
+      ? 0
       : timerType === "beginner"
       ? 5 * 60
       : expertBreakTime.hours * 3600 +
@@ -483,12 +605,16 @@ export default function App() {
         expertBreakTime.seconds;
 
   const realTimeAddedSeconds =
-    (isActive || (!isActive && timeLeft < initialTimeLeft)) &&
-    timerMode === "focus"
+    timerType === "stopwatch"
+      ? timerMode === "focus" && (isActive || (!isActive && timeLeft > 0))
+        ? timeLeft
+        : 0
+      : (isActive || (!isActive && timeLeft < initialTimeLeft)) &&
+        timerMode === "focus"
       ? initialTimeLeft - timeLeft
       : 0;
 
-  const addStudySession = (
+  const addStudySession = async (
     seconds: number,
     bookIdParam?: string,
     chapterIdParam?: string,
@@ -509,29 +635,150 @@ export default function App() {
       }
     }
 
-    const durationMinutes = Math.max(1, Math.floor(seconds / 60));
+    const endTime = dateParam ? new Date(dateParam) : new Date();
 
-    const baseSession: StudySession = {
-      id: Date.now().toString(),
-      date: dateParam || new Date().toISOString(),
-      durationMinutes: durationMinutes,
-      durationSeconds: seconds,
-      bookId: bookIdParam,
-      chapterId: chapterIdParam,
-      title: finalTitle,
-    };
+    let remainingSeconds = seconds;
+    let currentEndMs = endTime.getTime();
+    const newSessions: StudySession[] = [];
 
+    let activeSync: typeof syncIntention = null;
     if (syncIntention) {
-      // Find the record and attach the timetable block ID if necessary
-      baseSession.timetableDate = syncIntention.targetDateStr;
-      if (syncIntention.blockId) {
-        baseSession.timetableBlockId = syncIntention.blockId;
-      }
+      activeSync = { ...syncIntention };
       setSyncIntention(null);
     }
 
-    setSessions((prev) => [...prev, baseSession]);
-    appLog("INFO", "Study session added", baseSession);
+    while (remainingSeconds > 0) {
+      const currentEnd = new Date(currentEndMs);
+      const currentStartOfDayMs = new Date(
+        currentEnd.getFullYear(),
+        currentEnd.getMonth(),
+        currentEnd.getDate()
+      ).getTime();
+
+      const currentDateStr = [
+        currentEnd.getFullYear(),
+        String(currentEnd.getMonth() + 1).padStart(2, "0"),
+        String(currentEnd.getDate()).padStart(2, "0"),
+      ].join("-");
+
+      let boundMs = currentStartOfDayMs;
+      let blockIdForSession: string | undefined = undefined;
+
+      if (activeSync) {
+        try {
+          const utils = await import("./lib/timetableUtils");
+          const layouts = await utils.getDailyLayouts(currentDateStr);
+
+          const msFromStartOfDay = currentEndMs - currentStartOfDayMs;
+          // Subtract a tiny amount so exactly 08:00 falls into the 07:00-08:00 block
+          const effectiveMins = msFromStartOfDay / 60000 - 0.001;
+
+          if (effectiveMins >= 0) {
+            let currentBlock = layouts.find((b) => {
+              const st = utils.parseMins(b.startTime);
+              let et = utils.parseMins(b.endTime);
+              if (et <= st) et += 24 * 60;
+              return effectiveMins >= st && effectiveMins < et;
+            });
+
+            if (
+              !currentBlock &&
+              activeSync.blockId &&
+              remainingSeconds === Math.max(1, Math.floor(elapsedSeconds))
+            ) {
+              currentBlock = layouts.find((b) => b.id === activeSync!.blockId);
+            }
+
+            if (currentBlock) {
+              const startBlockMs =
+                currentStartOfDayMs +
+                utils.parseMins(currentBlock.startTime) * 60000;
+              if (startBlockMs > boundMs) boundMs = startBlockMs;
+              blockIdForSession = currentBlock.id;
+
+              const records = await utils.getTimetableRecords(currentDateStr);
+              const hasRecord = records.find(
+                (r: any) =>
+                  r.blockId === currentBlock?.id ||
+                  (r.hour !== undefined &&
+                    `${String(r.hour).padStart(2, "0")}:00` ===
+                      currentBlock?.id)
+              );
+
+              if (!hasRecord) {
+                const newRecords = [
+                  ...records,
+                  {
+                    id:
+                      Date.now().toString() +
+                      Math.random().toString(36).substring(2, 5),
+                    blockId: currentBlock!.id,
+                    bookId: bookIdParam || "",
+                    chapterId: chapterIdParam || "",
+                    startPage: 0,
+                    endPage: 0,
+                    memo: "",
+                    isAutoSynced: true,
+                  },
+                ];
+                await utils.saveTimetableRecords(currentDateStr, newRecords);
+                setTimetableRecords((prev) => ({
+                  ...prev,
+                  [currentDateStr]: newRecords,
+                }));
+              }
+            } else if (activeSync.blockId) {
+              blockIdForSession = activeSync.blockId;
+            }
+          }
+        } catch (e) {
+          appLog("ERROR", "Failed to split auto-sync blocks", e);
+        }
+      }
+
+      const currentStartMs = currentEndMs - remainingSeconds * 1000;
+
+      if (currentStartMs >= boundMs) {
+        // Fits entirely within this chunk
+        newSessions.push({
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+          date: new Date(currentEndMs).toISOString(),
+          durationMinutes: Math.max(1, Math.floor(remainingSeconds / 60)),
+          durationSeconds: Math.floor(remainingSeconds),
+          bookId: bookIdParam,
+          chapterId: chapterIdParam,
+          title: finalTitle,
+          timetableDate: blockIdForSession ? currentDateStr : undefined,
+          timetableBlockId: blockIdForSession, // keeping this
+          syncedBlockId: blockIdForSession, // adding this for TodayPlan compatibility
+        });
+        remainingSeconds = 0;
+      } else {
+        // Hits a boundary
+        const secondsInChunk = (currentEndMs - boundMs) / 1000;
+        if (secondsInChunk > 0) {
+          newSessions.push({
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+            date: new Date(currentEndMs).toISOString(),
+            durationMinutes: Math.max(1, Math.floor(secondsInChunk / 60)),
+            durationSeconds: Math.floor(secondsInChunk),
+            bookId: bookIdParam,
+            chapterId: chapterIdParam,
+            title: finalTitle,
+            timetableDate: blockIdForSession ? currentDateStr : undefined,
+            timetableBlockId: blockIdForSession, // keeping this
+            syncedBlockId: blockIdForSession, // adding this for TodayPlan compatibility
+          });
+        }
+        remainingSeconds -= secondsInChunk;
+        currentEndMs = boundMs === currentStartOfDayMs ? boundMs - 1 : boundMs;
+      }
+    }
+
+    newSessions.reverse(); // Chronological order
+
+    setSessions((prev) => [...prev, ...newSessions]);
+    appLog("INFO", "Study session(s) added", newSessions);
   };
 
   const updateSession = (id: string, updates: Partial<StudySession>) => {
@@ -560,40 +807,57 @@ export default function App() {
 
   useEffect(() => {
     let interval: any;
-    if (isActive && timeLeft > 0) {
-      const endTime = Date.now() + timeLeft * 1000;
-      if (Capacitor.isNativePlatform()) {
-        SystemHelper.startForegroundService({
-          title: "Bright Study",
-          text: "타이머 진행중...",
-          endTimeStr: endTime.toString()
-        }).catch(() => {});
-        SystemHelper.acquireWakelock().catch(() => {});
+    if (isActive) {
+      // Create backup on start
+      localStorage.setItem(
+        "study_timer_backup",
+        JSON.stringify({
+          isActive: true,
+          timerType,
+          timerMode,
+          timerBookId,
+          timerChapterId,
+          startTimestamp: Date.now(),
+          baseTimeLeft: timeLeft,
+          initialTimeLeft,
+        })
+      );
+
+      if (timerType === "stopwatch") {
+        const startTime = Date.now() - timeLeft * 1000;
+        const activeBook = books.find((b) => b.id === timerBookId);
+        const subjectName = activeBook ? activeBook.title : undefined;
+
+        interval = setInterval(() => {
+          const nextTime = Math.max(
+            0,
+            Math.floor((Date.now() - startTime) / 1000)
+          );
+          setTimeLeft(nextTime);
+        }, 500);
+      } else if (timeLeft > 0) {
+        const endTime = Date.now() + timeLeft * 1000;
+        const activeBook = books.find((b) => b.id === timerBookId);
+        const subjectName = activeBook ? activeBook.title : undefined;
+
+        interval = setInterval(() => {
+          const nextTime = Math.max(
+            0,
+            Math.ceil((endTime - Date.now()) / 1000)
+          );
+          setTimeLeft(nextTime);
+        }, 500);
       }
-      interval = setInterval(() => {
-        const nextTime = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
-        setTimeLeft(nextTime);
-        if (!Capacitor.isNativePlatform() && nextTime > 0) {
-           // On web, we could theoretically update something, but we don't have Foreground Service.
-        }
-      }, 500);
     } else {
-      if (Capacitor.isNativePlatform()) {
-        SystemHelper.stopForegroundService().catch(() => {});
-        SystemHelper.releaseWakelock().catch(() => {});
-      }
+      localStorage.removeItem("study_timer_backup");
     }
     return () => {
       clearInterval(interval);
-      if (Capacitor.isNativePlatform()) {
-        SystemHelper.stopForegroundService().catch(() => {});
-        SystemHelper.releaseWakelock().catch(() => {});
-      }
     };
   }, [isActive]);
 
   useEffect(() => {
-    if (isActive && timeLeft <= 0) {
+    if (isActive && timerType !== "stopwatch" && timeLeft <= 0) {
       setIsActive(false);
       playSystemAlert(timerAlertMode);
 
@@ -615,20 +879,29 @@ export default function App() {
     timerChapterId,
   ]);
 
-  const stopTimer = () => {
+  const stopTimer = (overrideTimeLeft?: number) => {
     setIsActive(false);
     if (capacitorNotifications) {
       capacitorNotifications.cancelTimerNotification();
     }
+
+    const finalTimeLeft =
+      overrideTimeLeft !== undefined ? overrideTimeLeft : timeLeft;
+
     if (timerMode === "focus") {
-      const elapsedSeconds = initialTimeLeft - timeLeft;
+      const elapsedSeconds =
+        timerType === "stopwatch"
+          ? finalTimeLeft
+          : initialTimeLeft - finalTimeLeft;
       if (elapsedSeconds > 0) {
         addStudySession(elapsedSeconds, timerBookId, timerChapterId);
       }
     }
     setTimerMode("focus");
     setTimeLeft(
-      timerType === "beginner"
+      timerType === "stopwatch"
+        ? 0
+        : timerType === "beginner"
         ? 25 * 60
         : expertTime.hours * 3600 + expertTime.minutes * 60 + expertTime.seconds
     );
@@ -756,6 +1029,13 @@ export default function App() {
     if (data.alarms) setAlarms(data.alarms);
     if (data.weeklyPlans) setWeeklyPlans(data.weeklyPlans);
     if (data.monthlyPlans) setMonthlyPlans(data.monthlyPlans);
+    if (data.timetableRecords) setTimetableRecords(data.timetableRecords);
+    if (data.globalWakeTimeRaw !== undefined)
+      setGlobalWakeTimeRaw(data.globalWakeTimeRaw);
+    if (data.globalSleepTimeRaw !== undefined)
+      setGlobalSleepTimeRaw(data.globalSleepTimeRaw);
+    if (data.dailySettingsDict) setDailySettingsDict(data.dailySettingsDict);
+    if (data.dailyLayouts) setDailyLayouts(data.dailyLayouts);
     if (data.dailyGoalMinutes) setDailyGoalMinutes(data.dailyGoalMinutes);
     if (data.dDay !== undefined) setDDay(data.dDay);
     if (data.dDaySize) setDDaySize(data.dDaySize);
@@ -933,17 +1213,19 @@ export default function App() {
   return (
     <>
       {forceShowPermissionWizard && Capacitor.isNativePlatform() && (
-        <PermissionWizard 
+        <PermissionWizard
           onComplete={() => {
-             setForceShowPermissionWizard(false);
-             setHasSeenPermissionWizard(true);
-             checkPerms();
-          }} 
+            setForceShowPermissionWizard(false);
+            setHasSeenPermissionWizard(true);
+            checkPerms();
+          }}
         />
       )}
-      {!forceShowPermissionWizard && hasSeenPermissionWizard && !hasSeenAlertGuide && (
-        <AlertGuideModal onClose={() => setHasSeenAlertGuide(true)} />
-      )}
+      {!forceShowPermissionWizard &&
+        hasSeenPermissionWizard &&
+        !hasSeenAlertGuide && (
+          <AlertGuideModal onClose={() => setHasSeenAlertGuide(true)} />
+        )}
       <div
         className="min-h-screen bg-slate-50 dark:bg-slate-900 font-sans text-slate-900 dark:text-slate-100 transition-colors"
         onTouchStart={handleTouchStart}
@@ -1014,7 +1296,7 @@ export default function App() {
 
         {/* Timer End Modal */}
         {timerEndNotification && (
-          <div 
+          <div
             className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
             onClick={() => {
               if (capacitorNotifications?.stopAlarmSound) {
@@ -1023,9 +1305,9 @@ export default function App() {
               setTimerEndNotification(null);
             }}
           >
-            <div 
+            <div
               className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center animate-in zoom-in-95 duration-200"
-              onClick={e => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="w-20 h-20 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center text-4xl mb-6 shadow-inner">
                 {timerEndNotification === "focus_ended" ? "🎉" : "💪"}
@@ -1067,13 +1349,13 @@ export default function App() {
 
         {/* Alarm Trigger Modal */}
         {activeAlarmNotification && (
-          <div 
+          <div
             className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
             onClick={() => setActiveAlarmNotification(null)}
           >
-            <div 
+            <div
               className="bg-white dark:bg-slate-800 rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center animate-in zoom-in-95 duration-200"
-              onClick={e => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="w-20 h-20 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center text-4xl mb-6 shadow-inner animate-bounce">
                 ⏰
@@ -1303,6 +1585,16 @@ export default function App() {
                   setBooks={setBooks}
                   setActiveTab={setActiveTab}
                   autoGoalDisplayMode={autoGoalDisplayMode}
+                  timetableRecords={timetableRecords}
+                  setTimetableRecords={setTimetableRecords}
+                  globalWakeTimeRaw={globalWakeTimeRaw}
+                  setGlobalWakeTimeRaw={setGlobalWakeTimeRaw}
+                  globalSleepTimeRaw={globalSleepTimeRaw}
+                  setGlobalSleepTimeRaw={setGlobalSleepTimeRaw}
+                  dailySettingsDict={dailySettingsDict}
+                  setDailySettingsDict={setDailySettingsDict}
+                  dailyLayouts={dailyLayouts}
+                  setDailyLayouts={setDailyLayouts}
                 />
               )}
               {activeTab === "books" && (
@@ -1337,9 +1629,20 @@ export default function App() {
                   setWeeklyPlans={setWeeklyPlans}
                   dailyGoalMinutes={dailyGoalMinutes}
                   setDailyGoalMinutes={setDailyGoalMinutes}
-                  books={activeBooks}
+                  books={books}
+                  setBooks={setBooks}
                   setActiveTab={setActiveTab}
                   autoGoalDisplayMode={autoGoalDisplayMode}
+                  timetableRecords={timetableRecords}
+                  setTimetableRecords={setTimetableRecords}
+                  globalWakeTimeRaw={globalWakeTimeRaw}
+                  setGlobalWakeTimeRaw={setGlobalWakeTimeRaw}
+                  globalSleepTimeRaw={globalSleepTimeRaw}
+                  setGlobalSleepTimeRaw={setGlobalSleepTimeRaw}
+                  dailySettingsDict={dailySettingsDict}
+                  setDailySettingsDict={setDailySettingsDict}
+                  dailyLayouts={dailyLayouts}
+                  setDailyLayouts={setDailyLayouts}
                 />
               )}
               {activeTab === "alarms" && (
@@ -1384,7 +1687,7 @@ export default function App() {
 
         <AnimatePresence>
           {showAppExitModal && (
-            <div 
+            <div
               className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[9999] flex flex-col items-center justify-center p-4"
               onClick={() => setShowAppExitModal(false)}
             >
@@ -1408,8 +1711,6 @@ export default function App() {
                   <button
                     onClick={() => {
                       if (Capacitor.isNativePlatform()) {
-                        SystemHelper.stopForegroundService().catch(() => {});
-                        SystemHelper.releaseWakelock().catch(() => {});
                         CapApp.exitApp();
                       } else if ((window as any).__TAURI__) {
                         window.close();

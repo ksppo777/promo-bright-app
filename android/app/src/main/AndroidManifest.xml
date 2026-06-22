@@ -46,10 +46,6 @@
             </intent-filter>
         </activity>
 
-        <service android:name=".SystemHelperService" android:foregroundServiceType="specialUse">
-            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="timer" />
-        </service>
-
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

@@ -17,64 +17,6 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 public class SystemHelperPlugin extends Plugin {
 
     @PluginMethod
-    public void startForegroundService(PluginCall call) {
-        String title = call.getString("title", "Bright Study");
-        String text = call.getString("text", "타이머 진행중...");
-        Double endTimeDouble = call.getDouble("endTime");
-        String endTimeStr = call.getString("endTimeStr");
-
-        Intent intent = new Intent(getContext(), SystemHelperService.class);
-        intent.putExtra("title", title);
-        intent.putExtra("text", text);
-        
-        long parsedEndTime = 0;
-        if (endTimeStr != null) {
-            try {
-                parsedEndTime = Long.parseLong(endTimeStr);
-            } catch (Exception e) {}
-        } else if (endTimeDouble != null) {
-            parsedEndTime = endTimeDouble.longValue();
-        }
-        
-        if (parsedEndTime > 0) {
-            intent.putExtra("endTime", parsedEndTime);
-        }
-        
-        intent.setAction("START");
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            getContext().startForegroundService(intent);
-        } else {
-            getContext().startService(intent);
-        }
-        call.resolve();
-    }
-
-    @PluginMethod
-    public void updateForegroundService(PluginCall call) {
-        String text = call.getString("text", "");
-        Double endTimeDouble = call.getDouble("endTime");
-        
-        Intent intent = new Intent(getContext(), SystemHelperService.class);
-        intent.putExtra("text", text);
-        if (endTimeDouble != null) {
-            intent.putExtra("endTime", endTimeDouble.longValue());
-        }
-        intent.setAction("UPDATE");
-        
-        getContext().startService(intent);
-        call.resolve();
-    }
-
-    @PluginMethod
-    public void stopForegroundService(PluginCall call) {
-        Intent intent = new Intent(getContext(), SystemHelperService.class);
-        intent.setAction("STOP");
-        getContext().startService(intent);
-        call.resolve();
-    }
-
-    @PluginMethod
     public void bringToFront(PluginCall call) {
         Context context = getContext();
         Intent intent = new Intent(context, getActivity().getClass());
